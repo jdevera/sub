@@ -19,23 +19,91 @@ abs_dirname() {
   cd "$cwd"
 }
 
+function is_runnable()
+{
+  [[ -f $1 && -x $1 ]]
+}
+
+debug()
+{
+  test -z "$DEBUG" || echo "$@"
+}
+
+declare -i SHIFT=0
+declare COMMAND_PATH
+declare -a COMMAND
+function find_command_path()
+{
+  SHIFT=0
+  COMMAND_PATH=''
+  COMMAND=('cl')
+  local running_path="$libexec_path"
+  local token
+  for (( i = 1; i <= $#; i++ )); do
+    token="${!i}"
+    # If we still have not resolved the script name and we are already seeing
+    # flags in the command line, no chance. Try at least to run the directory thing at the bottom.
+    if [[ $token == -* ]]; then
+        break
+    fi
+    SHIFT=$i
+    COMMAND+=("$token")
+    debug SHIFT $SHIFT
+    debug TOKEN: $token
+    local possible_path="$running_path/sub-$token"
+    # If the current token is part of the path but no the script, just add to
+    # running path.
+    if [[ -d $possible_path ]]; then
+      running_path="$possible_path"
+      debug FOUND DIR: $possible_path
+      continue
+    # But if the current token is the script, show the path and return.
+    elif is_runnable "$possible_path"; then
+      debug FOUND_FILE: $possible_path
+      COMMAND_PATH="$possible_path"
+      return
+    # Otherwise, we have a token that is not a directory and appears before the
+    # script is found. This is an error.
+    else
+      debug NOT FOUND: $possible_path
+      return
+    fi
+  done
+
+  # We are here because we have run out of arguments and we have not found a
+  # script. However, if the last element in the command entered was the name of
+  # a sub-sub directory, attempt to run a file with the same name within it. It
+  # should have the help for the sub-sub
+  if [[ -n $running_path ]]; then
+    local script=$(basename $running_path)
+    local possible_path="$running_path/$script"
+    if is_runnable "$possible_path"; then
+      debug FOUND DIRFILE: $possible_path
+      COMMAND_PATH="$possible_path"
+      return
+    fi
+  fi
+
+  return
+}
+
 libexec_path="$(abs_dirname "$0")"
 export _SUB_ROOT="$(abs_dirname "$libexec_path")"
+# Add the libexec directory to the PATH
 export PATH="${libexec_path}:$PATH"
 
 command="$1"
 case "$command" in
-"" | "-h" | "--help" )
+"" | "-h" | "--help")
   exec sub-help
   ;;
 * )
-  command_path="$(command -v "sub-$command" || true)"
-  if [ ! -x "$command_path" ]; then
-    echo "sub: no such command \`$command'" >&2
+  find_command_path "$@"
+  shift $SHIFT
+  if [ ! -x "$COMMAND_PATH" ]; then
+    echo "sub: no such command \`${COMMAND[@]}'" >&2
     exit 1
   fi
-
-  shift
-  exec "$command_path" "$@"
+  exec "$COMMAND_PATH" "$@"
   ;;
 esac
