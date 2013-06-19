@@ -23,20 +23,50 @@ fi
 
 shopt -s nullglob
 
-{ for path in ${PATH//:/$'\n'}; do
-    for command in "${path}/sub-"*; do
-      command="${command##*sub-}"
-      if [ -n "$sh" ]; then
-        if [ ${command:0:3} = "sh-" ]; then
-          echo ${command##sh-}
+
+function list_commands()
+{
+    local dir="$1"
+    local command
+    for command in "$dir/sub-"*
+    do
+        if [[ $(basename $command) == $(basename $dir) ]]; then
+            continue
         fi
-      elif [ -n "$nosh" ]; then
-        if [ ${command:0:3} != "sh-" ]; then
-          echo ${command##sh-}
+        command="${command##*sub-}"
+        if [[  -n $sh ]]; then
+            if [[  ${command:0:3} == "sh-" ]]; then
+                echo ${command##sh-}
+            fi
+        elif [[  -n $nosh ]]; then
+            if [[  ${command:0:3} != "sh-" ]]; then
+                echo ${command##sh-}
+            fi
+        else
+            echo ${command##sh-}
         fi
-      else
-        echo ${command##sh-}
-      fi
     done
+}
+
+
+function find_command_path()
+{
+  local running_path="$libexec_path"
+  for (( i = 1; i <= $#; i++ )); do
+    running_path="$running_path/sub-${!i}"
   done
-} | sort | uniq
+  if [[ -d $running_path ]]; then
+    COMMAND_PATH="$running_path"
+  else
+    COMMAND_PATH=''
+  fi
+}
+
+libexec_path="$_SUB_ROOT/libexec"
+COMMAND_PATH=$libexec_path
+if [[ $# > 0 ]]; then
+    find_command_path "$@"
+fi
+if [[ -n $COMMAND_PATH ]]; then
+    list_commands "$COMMAND_PATH" | sort | uniq
+fi
