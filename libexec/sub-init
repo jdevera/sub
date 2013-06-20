@@ -63,21 +63,32 @@ bash | zsh )
   ;;
 esac
 
-commands=(`sub commands --sh`)
-IFS="|"
 cat <<EOS
 _sub_wrapper() {
-  local command="\$1"
-  if [ "\$#" -gt 0 ]; then
-    shift
-  fi
+    [[ -z \$1 ]] && command sub || true
+    local running_path=$_SUB_ROOT/libexec
+    local running_command
+    local cmd=""
+    for command in \$@
+    do
+        if [[ -d \$running_path/sub-\$command ]]; then
+            running_path=\$running_path/sub-\$command
+            running_command="\$running_command \$command"
+            shift
+            continue
+        elif [[ -f \$running_path/sub-sh-\$command ]]; then
+            cmd="\$running_command sh-\$command"
+            shift
+        else
+            command sub \$running_command "\$@"
+            return \$?
+        fi
 
-  case "\$command" in
-  ${commands[*]})
-    eval \`sub "sh-\$command" "\$@"\`;;
-  *)
-    command sub "\$command" "\$@";;
-  esac
+        if [[ -n \$cmd ]]; then
+            eval \`command sub \$cmd "\$@"\`
+            return \$?
+        fi
+    done
 }
 EOS
 

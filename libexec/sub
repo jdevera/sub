@@ -65,16 +65,21 @@ function find_command_path()
     debug SHIFT $SHIFT
     debug TOKEN: $token
     local possible_path="$running_path/sub-$token"
+    local possible_path_sh="$running_path/sub-sh-$token"
     # If the current token is part of the path but no the script, just add to
     # running path.
     if [[ -d $possible_path ]]; then
       running_path="$possible_path"
       debug FOUND DIR: $possible_path
       continue
-    # But if the current token is the script, show the path and return.
+    # But if the current token is the script, set the path and return.
     elif [[ -x  $possible_path ]]; then
       debug FOUND_FILE: $possible_path
       COMMAND_PATH="$possible_path"
+      return
+    elif [[ -x  $possible_path_sh ]]; then
+      debug FOUND_FILE: $possible_path_sh
+      COMMAND_PATH="$possible_path_sh"
       return
     # Otherwise, we have a token that is not a directory and appears before the
     # script is found. This is an error.
