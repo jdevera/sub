@@ -4,7 +4,7 @@ Sub is a model for setting up shell programs that use subcommands, like `git` or
 
 A sub program is run at the command line using this style:
 
-    $ [name of program] [subcommand] [(args)]
+    $ [name of program] [subcommand] [subcommand] [(args)]
 
 Here's some quick examples:
 
@@ -45,6 +45,32 @@ Of course, this is a simple example...but now `rush who` should work!
 
 You can run *any* executable in the `libexec` directly, as long as it follows the `NAME-SUBCOMMAND` convention. Try out a Ruby script or your favorite language!
 
+### Sub-subcommands
+
+Sub can also handle multiple level subcommands, where a subcommand is a container for more subcommands. Each subcommand container is a directory, starting under `libexec` that follows the same name conventions described above.
+
+Here is an example of adding a multi level sub command, again assuming your sub is named `rush`. run:
+
+    mkdir -p libexec/rush-dates
+    touch libexec/rush-dates/rush-year
+    chmod +x libexec/rush-dates/rush-year
+
+Now add these contents to `libexec/rush-dates/rush-year`:
+
+``` bash
+#!/usr/bin/env bash
+set -e
+
+date +%Y
+```
+
+And, with this, you can now run `rush dates year`.
+
+    $ rush dates year
+    2013
+
+You can also have deeper nested levels of sub commands, just create directories within the directories under `libexec` following the `NAME-CONTAINER` convention.
+
 ## What's on your sub
 
 You get a few commands that come with your sub:
@@ -54,6 +80,7 @@ You get a few commands that come with your sub:
 * `help`: Document how to use each subcommand
 * `init`: Shows how to load your sub with autocompletions, based on your shell.
 * `shell`: Helps with calling subcommands that might be named the same as builtin/executables.
+* `example`: An example of multi level sub commands, it's safe to remove.
 
 If you ever need to reference files inside of your sub's installation, say to access a file in the `share` directory, your sub exposes the directory path in the environment, based on your sub name. For a sub named `rush`, the variable name will be `_RUSH_ROOT`.
 
@@ -94,8 +121,11 @@ Now, when you run `sub`, the "Summary" magic comment will now show up:
 
     usage: sub <command> [<args>]
 
+    A collection of commands
+
     Some useful sub commands are:
        commands               List all sub commands
+       + example              Collection of BASH Sub Example Scripts
        who                    Check who's logged in
 
 And running `sub help who` will show the "Usage" magic comment, and then the "Help" comment block:
@@ -108,6 +138,28 @@ And running `sub help who` will show the "Usage" magic comment, and then the "He
        Show off an example indented
 
     And maybe start off another one?
+
+A container of sub commands can also provide documentation, using the same magic comments described above, in a file called `doc.txt` directly under the container directory. Only `Summary` and `Help` entries are used, as the usage string is predefined for containers. For instance, these are the contents of the `libexec/sub-example/doc.txt`:
+
+    # Summary: Collection of BASH Sub Example Scripts
+    # Help: These commands are mostly used as examples and for testing sub modifications
+
+The _Summary_ line is shown in the sub summaries shown above and the _Help_ text is used when running help with the container:
+
+    $ sub help example
+    Usage: sub example <command> [<args>]
+
+    These commands are mostly used as examples and for testing sub modifications
+
+    Some useful sub example commands are:
+       + advanced  List all Advanced sub Example Scripts
+       + basic     List all basic sub Example Scripts
+
+    See 'sub help example <command>' for information on a specific command.
+
+Container names appear preceded by a plus sign (`+`) in the summaries view.
+
+There is a `doc.txt` file directly under the `libexec` directory. From this one only the _Help_ text is used, it can be a useful place to describe your sub.
 
 That's not all you get by convention with sub...
 
