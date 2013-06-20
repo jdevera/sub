@@ -1,14 +1,99 @@
 #!/usr/bin/env bash
 set -e
 
-COMMAND="$1"
-if [ -z "$COMMAND" ]; then
+debug()
+{
+  test -z "$DEBUG" || echo DEBUG-COMPLETIONS: "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Given a command line with tokens representing both the subcommand structure
+# and eventually the arguments for a command, figure out the path to the
+# command and indicate how many arguments from the command need to be shifted
+# so that all that remains is the command arguments.
+# 
+# The results are stored in the following variables:
+# 
+#   COMMAND_PATH    Contains the full path to the command, which can be
+#                   either a file or a directory.
+# 
+#   COMMAND         An array with the tokens that lead up to the command,
+#                   not including the arguments for such.
+# 
+#   SHIFT           The number of tokens consumed in the full command line at
+#                   the time the command was finally found. This can be used
+#                   as an argument for shift to leave only the commands
+#                   arguments in the list of arguments.
+# ---------------------------------------------------------------------------
+function find_command_path()
+{
+  # Output variables
+  declare -i SHIFT=0
+  COMMAND_PATH=''
+  COMMAND=()
+  # ------------------
+  local running_path="$_SUB_ROOT/libexec"
+  local token
+  debug running find_command_path with $@
+  for (( i = 1; i <= $#; i++ )); do
+    token="${!i}"
+    # If we still have not resolved the script name and we are already seeing
+    # flags in the command line, no chance. Try at least to run the directory
+    # thing at the bottom.
+    if [[ $token == -* ]]; then
+        break
+    fi
+    SHIFT=$i
+    COMMAND+=("$token")
+    debug SHIFT $SHIFT
+    debug TOKEN: $token
+    local possible_path="$running_path/sub-$token"
+    # If the current token is part of the path but no the script, just add to
+    # running path.
+    if [[ -d $possible_path ]]; then
+      running_path="$possible_path"
+      debug FOUND DIR: $possible_path
+      continue
+    # But if the current token is the script, show the path and return.
+    elif [[ -x  $possible_path ]]; then
+      debug FOUND_FILE: $possible_path
+      COMMAND_PATH="$possible_path"
+      return
+    # Otherwise, we have a token that is not a directory and appears before the
+    # script is found. This is an error.
+    else
+      debug NOT FOUND: $possible_path
+      return
+    fi
+  done
+
+  # We are here because we have run out of arguments and we have not found a
+  # script. The last element in the command entered was the name of a sub-sub
+  # directory.
+  if [[ -n $running_path ]]; then
+    COMMAND_PATH="$running_path"
+    return
+  fi
+
+  return
+}
+
+debug sub-completion called with $@
+
+if [ -z "$1" ]; then
   echo "usage: sub completions COMMAND [arg1 arg2...]" >&2
   exit 1
 fi
 
-COMMAND_PATH="$(command -v "sub-$COMMAND")"
-if grep -i "^# provide sub completions" "$COMMAND_PATH" >/dev/null; then
-  shift
+# Pass all arguments but last
+find_command_path "${@:1:$(($#-1))}"
+shift $SHIFT
+if [[ -z $COMMAND_PATH ]]; then
+    exit 0
+elif [[ -d $COMMAND_PATH ]]; then
+  debug Running sub-commands with "${COMMAND[@]}"
+  exec sub-commands ${COMMAND[@]}
+elif grep -iq "^# provide sub completions" "$COMMAND_PATH"; then
+  debug $COMMAND_PATH provides completions
   exec "$COMMAND_PATH" --complete "$@"
 fi

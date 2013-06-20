@@ -1,12 +1,10 @@
 _sub() {
-  COMPREPLY=()
   local word="${COMP_WORDS[COMP_CWORD]}"
 
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$(sub commands)" -- "$word") )
   else
-    local command="${COMP_WORDS[1]}"
-    local completions="$(sub completions "$command")"
+    local completions="$(sub completions "${COMP_WORDS[@]:1}")"
     COMPREPLY=( $(compgen -W "$completions" -- "$word") )
   fi
 }

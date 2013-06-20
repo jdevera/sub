@@ -6,6 +6,11 @@
 
 set -e
 
+debug()
+{
+  test -z "$DEBUG" || echo DEBUG-COMMANDS: "$@"
+}
+
 # Provide sub completions
 if [ "$1" = "--complete" ]; then
   echo --sh

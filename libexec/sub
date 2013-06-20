@@ -19,25 +19,38 @@ abs_dirname() {
   cd "$cwd"
 }
 
-function is_runnable()
-{
-  [[ -f $1 && -x $1 ]]
-}
-
 debug()
 {
-  test -z "$DEBUG" || echo "$@"
+  test -z "$DEBUG" || echo DEBUG: "$@"
 }
 
-declare -i SHIFT=0
-declare COMMAND_PATH
-declare -a COMMAND
+# ---------------------------------------------------------------------------
+# Given a command line with tokens representing both the subcommand structure
+# and eventually the arguments for a command, figure out the path to the
+# command and indicate how many arguments from the command need to be shifted
+# so that all that remains is the command arguments.
+# 
+# The results are stored in the following variables:
+# 
+#   COMMAND_PATH    Contains the full path to the command, which can be
+#                   either a file or a directory.
+# 
+#   COMMAND         An array with the tokens that lead up to the command,
+#                   not including the arguments for such.
+# 
+#   SHIFT           The number of tokens consumed in the full command line at
+#                   the time the command was finally found. This can be used
+#                   as an argument for shift to leave only the commands
+#                   arguments in the list of arguments.
+# ---------------------------------------------------------------------------
 function find_command_path()
 {
-  SHIFT=0
+  # Output variables
+  declare -i SHIFT=0
   COMMAND_PATH=''
-  COMMAND=('sub')
-  local running_path="$libexec_path"
+  COMMAND=()
+  # ------------------
+  local running_path="$_SUB_ROOT/libexec"
   local token
   for (( i = 1; i <= $#; i++ )); do
     token="${!i}"
@@ -59,7 +72,7 @@ function find_command_path()
       debug FOUND DIR: $possible_path
       continue
     # But if the current token is the script, show the path and return.
-    elif is_runnable "$possible_path"; then
+    elif [[ -x  $possible_path ]]; then
       debug FOUND_FILE: $possible_path
       COMMAND_PATH="$possible_path"
       return
