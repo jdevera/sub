@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
+dir_prefix="${SUB_HELP_DIR_PREFIX:-↬  }"
+
+DEBUG()
+{
+    [[ -n $DEBUG_SUB_HELP ]] && echo DEBUG: $@ >&2 || true
+}
+
 print_summaries() {
   local commands=()
   local summaries=()
   local longest_command=0
   local command
+  DEBUG print_summaries called with $@
 
-  for command in $(sub-commands); do
-    local file="$(command_path "$command")"
-    if [ ! -h "$file" ]; then
+  for command in $(sub-commands "$@"); do
+    local file="$(command_path "$@" "$command")"
+    if [[ -d $file ]]; then
+        file=$file/doc.txt
+        command="${dir_prefix}${command}"
+    fi
+    if [[ -e $file && ! -h $file ]]; then
       local summary="$(summary "$file")"
       if [ -n "$summary" ]; then
         commands["${#commands[@]}"]="$command"
@@ -39,15 +51,61 @@ print_help() {
   if [ -n "$usage" ]; then
     echo "$usage"
 
-    local help="$(help "$file")"
-    [ -n "$help" ] && echo && echo "$help"
+    local helptext="$(help "$file")"
+    [ -n "$helptext" ] && echo && echo "$helptext"
   else
     echo "Sorry, this command isn't documented yet."
   fi
 }
 
-command_path() {
-  command -v "sub-$command" || command -v "sub-sh-$command" || true
+# When printing help for a directory, take text from doc.txt file
+print_dir_help()
+{
+    DEBUG print_dir_help called with $@
+    local docfile="$1/doc.txt"
+    shift
+
+    local command="$@"
+    local helptext
+    [[ -n $command ]] && command="$command "
+    if [[ -f $docfile ]]; then
+        helptext="$(help "$docfile")"
+    else
+        true
+    fi
+    [ -n "$helptext" ] && helptext="\n$helptext\n"
+    local summaries="$(print_summaries "$@")"
+    echo -e "Usage: sub ${command}<command> [<args>]\n$helptext"
+    [[ -n $summaries ]] && echo "\
+Some useful sub ${command}commands are:
+$summaries
+
+See 'sub help ${command}<command>' for information on a specific command."
+}
+
+# find the full path to the command
+command_path()
+{
+    DEBUG command_path called with $@
+    local running_path="$_SUB_ROOT/libexec"
+    if [[ $# == 0 ]]; then
+        echo "$running_path"
+        DEBUG COMMAND_PATH $running_path
+    fi
+    local token
+    for (( i = 1; i < $#; i++ )); do # Skip the last
+        token=${!i}
+        running_path="$running_path/sub-$token"
+    done
+    token=${!#} # last element
+    if [[ -x $running_path/sub-$token ]]; then
+        echo $running_path/sub-$token
+        DEBUG COMMAND_PATH $running_path/sub-$token
+    elif [[ -x $running_path/sub-sh-$token ]]; then
+        echo $running_path/sub-sh-$token
+        DEBUG COMMAND_PATH $running_path/sub-sh-$token >&2
+    fi
+    return 0
 }
 
 summary() {
@@ -74,28 +132,44 @@ truncate() {
   fi
 }
 
+# set -x
+
+# TODO: provide common way to complete command strings
 # Provide sub completions
 if [ "$1" = "--complete" ]; then
   exec "sub-commands"
   exit
 fi
 
-command="$1"
-case "$command" in
-"") echo "Usage: sub <command> [<args>]
 
-Some useful sub commands are:
-$(print_summaries)
-
-See 'sub help <command>' for information on a specific command."
-;;
-*)
-  file="$(command_path "$command")"
-
-  if [ -n "$file" ]; then
-    print_help "$file"
-  else
-    echo "sub: no such command \`$command'" >&2
+# ----------------------------------------------------------------------------
+# If the first argument is a directory, it means somebody ran
+#
+#    sub command1 command2
+#
+# where command2 contains more subcommands. In that case, show help from the
+# doc file if present and exit with error.
+# ----------------------------------------------------------------------------
+if [[ -d $1 ]]; then
+    print_dir_help $1
     exit 1
-  fi
-esac
+fi
+
+# ----------------------------------------------------------------------------
+# resolve the path of the command based on its tokens. It no arguments were
+# used to call this script, the path will resolve to the one of libexec, which
+# will then print hlp for the top level commands.
+# ----------------------------------------------------------------------------
+file="$(command_path "$@")"
+
+if [[ -n $file ]]; then
+    if [[ -d $file ]]; then
+        print_dir_help "$file" "$@"
+    else
+        print_help "$file"
+    fi
+else
+    echo "sub: no such command \`$@'" >&2
+    exit 1
+fi
+
