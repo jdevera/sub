@@ -44,7 +44,6 @@ echo "Preparing your '$SUBNAME' sub!"
 
 if [ "$NAME" != "sub" ]; then
   rm bin/sub
-  mv share/sub share/$SUBNAME
 
   for file in **/sub*; do
     if [ -d "$file" ]; then
