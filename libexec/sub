@@ -97,7 +97,8 @@ case "$command" in
   shift $SHIFT
   # If we ended up with a directory, show help for that directory
   if [[ -d $COMMAND_PATH ]]; then
-      exec sub-help "$COMMAND_PATH"
+      debug Running help with path "$COMMAND_PATH"
+      exec sub-help "$COMMAND_PATH" ${COMMAND[@]}
   fi
   if [ ! -x "$COMMAND_PATH" ]; then
     echo "sub: no such command \`${COMMAND[@]}'" >&2

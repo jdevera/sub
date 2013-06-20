@@ -151,7 +151,7 @@ fi
 # doc file if present and exit with error.
 # ----------------------------------------------------------------------------
 if [[ -d $1 ]]; then
-    print_dir_help $1
+    print_dir_help "$@"
     exit 1
 fi
 
