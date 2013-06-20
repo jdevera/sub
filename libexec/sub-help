@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-dir_prefix="${SUB_HELP_DIR_PREFIX:-↬  }"
+dir_prefix="${SUB_HELP_DIR_PREFIX:-+ }"
 
 DEBUG()
 {
-    [[ -n $DEBUG_SUB_HELP ]] && echo DEBUG: $@ >&2 || true
+    [[ -n $DEBUG ]] && echo DEBUG-HELP: $@ >&2 || true
 }
 
-print_summaries() {
+function print_summaries()
+{
   local commands=()
   local summaries=()
   local longest_command=0
