@@ -9,4 +9,4 @@ _sub() {
   fi
 }
 
-complete -F _sub sub
+complete -o default -F _sub sub
