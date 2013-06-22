@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Sub: a script organization tool.
+"""
+
+import sys
+import os
+
+
+SUBNAME = 'sub'
+
+
+def path_prepend(directory):
+    """
+    Add a given directory to the beginning of the PATH environment variable.
+    """
+    os.environ['PATH'] = u"%s:%s" % (directory, os.environ['PATH'] )
+
+
+def mkcmd(command, shFlag = False):
+    """
+    Return a string with the name of a command in this sub.
+    """
+    return u"%s%s-%s" % (SUBNAME, ('-sh' if shFlag else ''), command)
+
+
+def find_command_path(start_dir, argv):
+    """
+    Given a command line with tokens representing both the subcommand structure
+    and eventually the arguments for a command, figure out the path to the
+    command and extract the items from the command line that are to be passed
+    as parameters of that command.
+
+    Returns a tuple with the following:
+        * The full path to the command, which can be either a file or a
+          directory. This will be None if the command cannot be found.
+        * A list of the tokens that lead up to the command, not including the
+          arguments for such. This is always set.
+        * The arguments to be passed to the command. this will be None if the
+          command cannot be found.
+    """
+    running_path = start_dir
+    shift = 0
+    command = []
+    for (shift, token) in enumerate(argv):
+
+        # If we still have not resolved the script name and we are already
+        # seeing flags in the command line. This means user passing flags to a
+        # container, which is not supported, so just jump out and show help for
+        # the container that has been built so far.
+        if token[0] == '-':
+            break
+        command.append(token)
+        possible_path = os.path.join(running_path, mkcmd(token))
+
+        # If the current token is part of the path but no the script, just add
+        # to running path and keep looking.
+        if os.path.isdir(possible_path):
+            running_path = possible_path
+            continue
+
+        # But if the current token is the script, set the path and return.
+        if os.access(possible_path, os.X_OK):
+            running_path = possible_path
+            break
+
+        # Perhaps it's an "sh-type" script
+        possible_path_sh = os.path.join(running_path, mkcmd(token, shFlag=True))
+        if os.access(possible_path_sh, os.X_OK):
+            running_path=possible_path_sh
+            break
+
+        # Otherwise, we have a token that is not a directory and appears before
+        # the script is found. This is an error. Make sure we still return the
+        # command, so it can be shown in the error.
+        return (None, command, None)
+
+    return (running_path, command, argv[shift+1:])
+
+
+def call_help(help_args = None):
+    """
+    Run the help subcommand
+    """
+    if help_args is None:
+        help_args = []
+    help_command = mkcmd('help')
+    os.execvp(help_command, [help_command] + help_args)
+
+
+def die(error):
+    """
+    Show message on stderr and exit
+    """
+    sys.stderr.write(error)
+    sys.stderr.flush()
+    sys.exit(1)
+
+
+def main(argv=[__name__]):
+    """ Run this program """
+    args = argv[1:]
+    try:
+        # Add this sub's main directory to the environment
+        libexec_path = os.path.dirname(os.path.abspath(__file__))
+        sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
+        os.environ[sub_root_env_name] = os.path.dirname(libexec_path)
+
+        # And also add the libexec directory to the PATH
+        path_prepend(libexec_path)
+
+        # If user is just asking for help, give them help
+        if len(args) < 1 or args[0] in ('-h', '--help'):
+            call_help()
+
+        # Find the path to the requested subcommand
+        (command_path, command, flags) = find_command_path(libexec_path, args)
+
+        # If we ended up with a directory, show help for that directory
+        if command_path is not None and os.path.isdir(command_path):
+            call_help([command_path] + command)
+
+        # We could not find the command, show error
+        if command_path is None or not os.access(command_path, os.X_OK):
+            die("%s: no such command `%s'\n" % (SUBNAME, ' '.join(command)))
+
+        # Or everything went well, so run the command
+        os.execvp(command_path, [command_path] + flags)
+
+
+    except KeyboardInterrupt:
+        sys.exit(-1)
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv) or 0)
