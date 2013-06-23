@@ -7,6 +7,7 @@ Sub: a script organization tool.
 
 import sys
 import os
+import glob
 
 
 SUBNAME = 'sub'
@@ -24,6 +25,69 @@ def mkcmd(command, shFlag = False):
     Return a string with the name of a command in this sub.
     """
     return u"%s%s-%s" % (SUBNAME, ('-sh' if shFlag else ''), command)
+
+
+def die(error):
+    """
+    Show message on stderr and exit
+    """
+    sys.stderr.write(error)
+    sys.stderr.flush()
+    sys.exit(1)
+
+
+def sub_help(help_args = None):
+    """
+    Run the help subcommand
+    """
+    if help_args is None:
+        help_args = []
+    help_command = mkcmd('help')
+    os.execvp(help_command, [help_command] + help_args)
+
+
+def print_container_commands(container_path, sh_flag = None):
+    """
+    Print the commands available in a given path
+    """
+    glob_pattern = os.path.join(container_path, mkcmd('*'))
+    commands = []
+    for command in glob.iglob(glob_pattern):
+        # Leave only the command name without prefix
+        command = command[len(glob_pattern)-1:]
+        # If it is an 'sh-type' command, also remove the 'sh-' prefix
+        is_sh = command.startswith('sh-')
+        if is_sh:
+            if sh_flag is None or sh_flag == True:
+                commands.append(command[3:])
+        else:
+            if sh_flag is None or sh_flag == False:
+                commands.append(command)
+    # sort | uniq, python style
+    for cmd in sorted(set(commands)):
+        print cmd
+
+
+def sub_commands(command, libexec_path):
+    """
+    Run the commands subcommand
+    """
+    sh_flag = None
+    if command:
+        if command[0] == '--sh':
+            sh_flag = True
+            command.pop(0)
+        elif command[0] == '--no-sh':
+            sh_flag = False
+            command.pop(0)
+    # Find the path to the container
+    container_path = os.path.join(libexec_path, *[ mkcmd(c) for c in command])
+
+    if os.path.isdir(container_path):
+        print_container_commands(container_path, sh_flag)
+        return True
+    return False
+
 
 
 def find_command_path(start_dir, argv):
@@ -80,23 +144,7 @@ def find_command_path(start_dir, argv):
     return (running_path, command, argv[shift+1:])
 
 
-def call_help(help_args = None):
-    """
-    Run the help subcommand
-    """
-    if help_args is None:
-        help_args = []
-    help_command = mkcmd('help')
-    os.execvp(help_command, [help_command] + help_args)
 
-
-def die(error):
-    """
-    Show message on stderr and exit
-    """
-    sys.stderr.write(error)
-    sys.stderr.flush()
-    sys.exit(1)
 
 
 def main(argv=[__name__]):
@@ -104,7 +152,7 @@ def main(argv=[__name__]):
     args = argv[1:]
     try:
         # Add this sub's main directory to the environment
-        libexec_path = os.path.dirname(os.path.abspath(__file__))
+        libexec_path = os.path.dirname(os.path.realpath(__file__))
         sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
         os.environ[sub_root_env_name] = os.path.dirname(libexec_path)
 
@@ -113,14 +161,21 @@ def main(argv=[__name__]):
 
         # If user is just asking for help, give them help
         if len(args) < 1 or args[0] in ('-h', '--help'):
-            call_help()
+            sub_help()
+
+        # The 'commands' subcommand is handled here, there is no need to
+        # dispatch to external script.
+        if len(args) > 0 and args[0] == 'commands':
+            args.pop(0)
+            ret = sub_commands(args, libexec_path)
+            return 0 if ret else 1
 
         # Find the path to the requested subcommand
         (command_path, command, flags) = find_command_path(libexec_path, args)
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
-            call_help([command_path] + command)
+            sub_help([command_path] + command)
 
         # We could not find the command, show error
         if command_path is None or not os.access(command_path, os.X_OK):
