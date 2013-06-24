@@ -16,7 +16,7 @@ function print_summaries()
   local command
   DEBUG print_summaries called with $@
 
-  for command in $(sub-commands "$@"); do
+  for command in $(sub commands "$@"); do
     local file="$(command_path "$@" "$command")"
     if [[ -d $file ]]; then
         file=$file/doc.txt
@@ -138,7 +138,7 @@ truncate() {
 # TODO: provide common way to complete command strings
 # Provide sub completions
 if [ "$1" = "--complete" ]; then
-  exec "sub-commands"
+  exec "sub commands $@"
   exit
 fi
 
