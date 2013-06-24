@@ -8,18 +8,43 @@ Sub: a script organization tool.
 import sys
 import os
 import glob
+import logging
 
 
 SUBNAME = 'sub'
 
+DEBUGGING = False
 
+if 'SUBDEBUG' in os.environ:
+    logging.basicConfig(filename='sub.log', level=logging.DEBUG)
+    DEBUGGING = True
+
+def DEBUG(msg):
+    if DEBUGGING:
+        logging.debug(msg)
+
+def traced(f):
+    if not DEBUGGING:
+        return f
+    def wrapped(*args, **kwargs):
+        if f.__name__ == 'main':
+            logging.debug("SUB: --------------------------------------------------------------------")
+            logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
+            logging.debug("SUB: --------------------------------------------------------------------")
+        logging.debug("TRACE: Entering %s with args: %s, %s" % (f.__name__, args, kwargs))
+        return f(*args, **kwargs)
+    wrapped.__name__ = f.__name__
+    wrapped.__doc__ = f.__doc__
+    return wrapped
+
+@traced
 def path_prepend(directory):
     """
     Add a given directory to the beginning of the PATH environment variable.
     """
     os.environ['PATH'] = u"%s:%s" % (directory, os.environ['PATH'] )
 
-
+@traced
 def mkcmd(command, shFlag = False):
     """
     Return a string with the name of a command in this sub.
@@ -27,6 +52,7 @@ def mkcmd(command, shFlag = False):
     return u"%s%s-%s" % (SUBNAME, ('-sh' if shFlag else ''), command)
 
 
+@traced
 def die(error):
     """
     Show message on stderr and exit
@@ -36,6 +62,7 @@ def die(error):
     sys.exit(1)
 
 
+@traced
 def sub_help(help_args = None):
     """
     Run the help subcommand
@@ -46,6 +73,7 @@ def sub_help(help_args = None):
     os.execvp(help_command, [help_command] + help_args)
 
 
+@traced
 def print_container_commands(container_path, sh_flag = None):
     """
     Print the commands available in a given path
@@ -68,6 +96,7 @@ def print_container_commands(container_path, sh_flag = None):
         print cmd
 
 
+@traced
 def sub_commands(command, libexec_path):
     """
     Run the commands subcommand
@@ -88,8 +117,7 @@ def sub_commands(command, libexec_path):
         return True
     return False
 
-
-
+@traced
 def find_command_path(start_dir, argv):
     """
     Given a command line with tokens representing both the subcommand structure
@@ -143,10 +171,44 @@ def find_command_path(start_dir, argv):
 
     return (running_path, command, argv[shift+1:])
 
+@traced
+def provides_completions(command_path):
+    """
+    Check wether certain file declares to provide completion for the current
+    sub.
+    """
+    compl_line = "# provide %s completions" % SUBNAME
+
+    with file(command_path, 'r') as fin:
+        for line in fin:
+            if line.lower().startswith(compl_line):
+                return True
+    return False
+
+@traced
+def sub_completions(command, libexec_path):
+    """
+    Run the completions subcommand
+    """
+    if len(command) == 0:
+        die("usage: %s completions COMMAND [arg1 arg2...]" % SUBNAME)
+    # Pass all arguments but last
+    (command_path, command, flags) = find_command_path(libexec_path, command[:-1])
+    if command_path is None:
+        DEBUG ("COMPLETIONS: COMMAND %s not found" % (command[:-1]))
+        return True
+    elif os.path.isdir(command_path):
+        DEBUG ("COMPLETIONS: Will complete with commands in container: %s" % command_path)
+        return sub_commands(command, libexec_path)
+    elif provides_completions(command_path):
+        DEBUG("Will complete by alling script %s" % command_path)
+        os.execvp(command_path, [command_path, '--complete'])
+    else:
+        DEBUG("COMPLETIONS: %s does not provide completions" % command_path)
 
 
 
-
+@traced
 def main(argv=[__name__]):
     """ Run this program """
     args = argv[1:]
@@ -165,23 +227,36 @@ def main(argv=[__name__]):
 
         # The 'commands' subcommand is handled here, there is no need to
         # dispatch to external script.
-        if len(args) > 0 and args[0] == 'commands':
+        if args[0] == 'commands':
+            DEBUG('SUB: handling "commands" subcommand')
             args.pop(0)
             ret = sub_commands(args, libexec_path)
             return 0 if ret else 1
+
+        # The completions subcommand is also handled internally
+        if args[0] == 'completions':
+            DEBUG('SUB: handling "completions" subcommand')
+            args.pop(0)
+            ret = sub_completions(args, libexec_path)
+            return 0 if ret else 1
+
+        DEBUG('SUB: will attempt to find subcommand with args: %s' % args)
 
         # Find the path to the requested subcommand
         (command_path, command, flags) = find_command_path(libexec_path, args)
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
+            DEBUG("SUB: subcommand %s is a container. Showing help" % command)
             sub_help([command_path] + command)
 
         # We could not find the command, show error
         if command_path is None or not os.access(command_path, os.X_OK):
+            DEBUG("SUB: subcommand %s was not found. Showing error" % command)
             die("%s: no such command `%s'\n" % (SUBNAME, ' '.join(command)))
 
         # Or everything went well, so run the command
+        DEBUG("SUB: subcommand %s was found. Executing with args: %s" % (command, flags))
         os.execvp(command_path, [command_path] + flags)
 
 
