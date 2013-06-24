@@ -11,7 +11,10 @@ import glob
 import logging
 
 
+# Globals
 SUBNAME = 'sub'
+sub_root = None
+libexec_path = None
 
 # Configure logging
 # -----------------------------------------------------------------------------
@@ -176,7 +179,7 @@ def print_container_commands(container_path, sh_flag = None):
 
 @traced
 @command
-def sub_commands(command, libexec_path):
+def sub_commands(command):
     """
     Run the commands subcommand
     """
@@ -270,7 +273,7 @@ def provides_completions(command_path):
 
 @traced
 @command
-def sub_completions(command, libexec_path):
+def sub_completions(command):
     """
     Run the completions subcommand
     """
@@ -283,7 +286,7 @@ def sub_completions(command, libexec_path):
         return True
     elif os.path.isdir(command_path):
         DEBUG ("Will complete with commands in container: %s" % command_path)
-        return sub_commands(command, libexec_path)
+        return sub_commands(command)
     elif provides_completions(command_path):
         DEBUG("Will complete by calling script %s --complete" % command_path)
         os.execvp(command_path, [command_path, '--complete'])
@@ -293,7 +296,7 @@ def sub_completions(command, libexec_path):
 
 @traced
 @command
-def sub_init(args, sub_root):
+def sub_init(args):
     """
     Run the init subcommand
     """
@@ -394,11 +397,16 @@ def sub_init(args, sub_root):
 def main(argv=[__name__]):
     """ Run this program """
     args = argv[1:]
+    global sub_root
+    global libexec_path
     try:
         # Add this sub's main directory to the environment
         libexec_path = os.path.dirname(os.path.realpath(__file__))
-        sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
         sub_root = os.path.dirname(libexec_path)
+
+        DEBUG("libexec_path = %s, sub_root = %s", libexec_path, sub_root)
+
+        sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
         os.environ[sub_root_env_name] = sub_root
 
         # And also add the libexec directory to the PATH
@@ -412,19 +420,19 @@ def main(argv=[__name__]):
         # dispatch to external script.
         if args[0] == 'commands':
             args.pop(0)
-            ret = sub_commands(args, libexec_path)
+            ret = sub_commands(args)
             return 0 if ret else 1
 
         # The completions subcommand is also handled internally
         if args[0] == 'completions':
             args.pop(0)
-            ret = sub_completions(args, libexec_path)
+            ret = sub_completions(args)
             return 0 if ret else 1
 
         # Handling internal 'init' subcommand
         if args[0] == 'init':
             args.pop(0)
-            ret = sub_init(args, sub_root)
+            ret = sub_init(args)
             return 0 if ret else 1
 
         DEBUG('will attempt to find subcommand with args: %s' % args)
