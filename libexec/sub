@@ -13,29 +13,103 @@ import logging
 
 SUBNAME = 'sub'
 
+# Configure logging
+# -----------------------------------------------------------------------------
+# Enable logging by setting the SUBDEBUG environment variable to any value
+# -----------------------------------------------------------------------------
 DEBUGGING = False
 
 if 'SUBDEBUG' in os.environ:
     logging.basicConfig(filename='sub.log', level=logging.DEBUG)
     DEBUGGING = True
+    debug_prefix = SUBNAME.upper()
+# -----------------------------------------------------------------------------
 
-def DEBUG(msg):
+def decorator(dec):
+    """
+    A decorator-decorator. Keeps all decorator boilerplate together so that it
+    does not have to be repeated in every decorator.
+
+    It propagates the attributes of the original function to the decorated
+    version.
+    """
+    def wrapped_decorator(f):
+        g = dec(f)
+        g.__name__ = f.__name__
+        g.__doc__ = f.__doc__
+        g.__dict__.update(f.__dict__)
+        return g
+    wrapped_decorator.__name__ = dec.__name__
+    wrapped_decorator.__doc__ = dec.__doc__
+    wrapped_decorator.__dict__.update(dec.__dict__)
+    return wrapped_decorator
+
+@decorator
+def debugonly(f):
+    """
+    A decorator to turn any function into a noop when not in debugging mode.
+    """
     if DEBUGGING:
-        logging.debug(msg)
+        return f
+    else:
+        def noop(*args, **kwargs):
+            pass
+        return noop
 
+@decorator
 def traced(f):
+    """
+    A decorator to log a trace of the call to the decorated function, only in
+    debugging mode.
+    """
     if not DEBUGGING:
         return f
+
     def wrapped(*args, **kwargs):
-        if f.__name__ == 'main':
-            logging.debug("SUB: --------------------------------------------------------------------")
-            logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
-            logging.debug("SUB: --------------------------------------------------------------------")
-        logging.debug("TRACE: Entering %s with args: %s, %s" % (f.__name__, args, kwargs))
+        logging.debug("%s:TRACE: Entering %s with args: %s, %s" % (
+                      debug_prefix, f.__name__, args, kwargs))
         return f(*args, **kwargs)
-    wrapped.__name__ = f.__name__
-    wrapped.__doc__ = f.__doc__
+
+    def wrapped_main(*args, **kwargs):
+        logging.debug("SUB: --------------------------------------------------------------------")
+        logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
+        logging.debug("SUB: --------------------------------------------------------------------")
+        logging.debug("SUB:TRACE: Entering %s with args: %s, %s" % (f.__name__, args, kwargs))
+        return f(*args, **kwargs)
+
+    newf = wrapped_main if f.__name__ == 'main' else wrapped
+    return newf
+
+@decorator
+def command(f):
+    """
+    A decorator for commands implemented internally.
+
+    It sets the logging prefix in debugging mode so that all log entries
+    indicate the command that is being run.
+    """
+    if not DEBUGGING or not f.__name__.startswith('sub_'):
+        return f
+    command_name = f.__name__[4:]
+    def wrapped(*args, **kwargs):
+        global debug_prefix
+        old_debug_prefix = debug_prefix
+        DEBUG('Handling "%s" subcommand internally' % command_name)
+        debug_prefix = command_name.upper()
+        r = f(*args, **kwargs)
+        debug_prefix = old_debug_prefix
+        return r
     return wrapped
+
+@debugonly
+def DEBUG(msg, *args, **kwargs):
+    """
+    Send debug messages to the log. Enabled only on debug mode.
+    """
+    logging.debug("%s: %s" % (debug_prefix, msg), *args, **kwargs)
+
+# -----------------------------------------------------------------------------
+
 
 @traced
 def path_prepend(directory):
@@ -43,6 +117,7 @@ def path_prepend(directory):
     Add a given directory to the beginning of the PATH environment variable.
     """
     os.environ['PATH'] = u"%s:%s" % (directory, os.environ['PATH'] )
+
 
 @traced
 def mkcmd(command, shFlag = False):
@@ -63,6 +138,7 @@ def die(error):
 
 
 @traced
+@command
 def sub_help(help_args = None):
     """
     Run the help subcommand
@@ -81,6 +157,7 @@ def print_container_commands(container_path, sh_flag = None):
     glob_pattern = os.path.join(container_path, mkcmd('*'))
     commands = []
     for command in glob.iglob(glob_pattern):
+        DEBUG("command '%s' matched glob pattern '%s'", command, glob_pattern)
         # Leave only the command name without prefix
         command = command[len(glob_pattern)-1:]
         # If it is an 'sh-type' command, also remove the 'sh-' prefix
@@ -92,11 +169,13 @@ def print_container_commands(container_path, sh_flag = None):
             if sh_flag is None or sh_flag == False:
                 commands.append(command)
     # sort | uniq, python style
+    DEBUG("These commands passed the filter: %s", commands)
     for cmd in sorted(set(commands)):
         print cmd
 
 
 @traced
+@command
 def sub_commands(command, libexec_path):
     """
     Run the commands subcommand
@@ -113,9 +192,11 @@ def sub_commands(command, libexec_path):
     container_path = os.path.join(libexec_path, *[ mkcmd(c) for c in command])
 
     if os.path.isdir(container_path):
+        DEBUG("Container path %s exists", container_path)
         print_container_commands(container_path, sh_flag)
         return True
     return False
+
 
 @traced
 def find_command_path(start_dir, argv):
@@ -188,6 +269,7 @@ def provides_completions(command_path):
 
 
 @traced
+@command
 def sub_completions(command, libexec_path):
     """
     Run the completions subcommand
@@ -197,60 +279,85 @@ def sub_completions(command, libexec_path):
     # Pass all arguments but last
     (command_path, command, flags) = find_command_path(libexec_path, command[:-1])
     if command_path is None:
-        DEBUG ("COMPLETIONS: COMMAND %s not found" % (command[:-1]))
+        DEBUG ("command %s not found" % (command[:-1]))
         return True
     elif os.path.isdir(command_path):
-        DEBUG ("COMPLETIONS: Will complete with commands in container: %s" % command_path)
+        DEBUG ("Will complete with commands in container: %s" % command_path)
         return sub_commands(command, libexec_path)
     elif provides_completions(command_path):
-        DEBUG("Will complete by alling script %s" % command_path)
+        DEBUG("Will complete by calling script %s --complete" % command_path)
         os.execvp(command_path, [command_path, '--complete'])
     else:
-        DEBUG("COMPLETIONS: %s does not provide completions" % command_path)
+        DEBUG("%s does not provide completions" % command_path)
 
 
 @traced
+@command
 def sub_init(args, sub_root):
     """
     Run the init subcommand
     """
-    doPrint = args and args[0] == '-'
-    if doPrint:
+    do_print = args and args[0] == '-'
+    if do_print:
         args.pop(0)
-        DEBUG("INIT: Called by shell")
+        DEBUG("Called by shell")
     else:
-        DEBUG("INIT: Called by user")
+        DEBUG("Called by user")
 
-    shell = args.pop(0) if args else os.path.basename(os.environ.get('SHELL', ''))
+    # Figure out the shell
+    if args:
+        shell = args.pop(0)
+    else:
+        shell = os.path.basename(os.environ.get('SHELL', ''))
+
+    # Profile files for supported shells
     profiles = dict(
         bash = '~/.bash_profile',
         zsh  = '~/.zshenv'
         )
 
-    profile = profiles.get(shell, 'your profile')
-    fmt_args = dict(sub=SUBNAME, profile=profile, sub_root=sub_root, shell=shell)
-    DEBUG("INIT: parameters: %s" % fmt_args)
+    # Common arguments for all subsequent strings
+    fmt_args = dict(
+            sub      = SUBNAME,
+            profile  = profiles.get(shell, 'your profile'),
+            sub_root = sub_root,
+            shell    = shell
+            )
 
-    if not doPrint:
-        msg = ( "# Load %(sub)s automatically by adding\n"
-                "# the following to %(profile)s:\n"
-                "\n"
-                'eval "$(%(sub_root)s/bin/%(sub)s init -)"\n'
-                "\n" % fmt_args)
+    DEBUG("Common arguments for strings: %s" % fmt_args)
+
+    if not do_print:
+        from textwrap import dedent as dd
+        msg = dd("""\
+            # Load %(sub)s automatically by adding
+            # the following to %(profile)s:
+
+            eval "$(%(sub_root)s/bin/%(sub)s init -)"
+
+            """ % fmt_args )
         if shell not in profiles:
-            msg += ( "# Warning: %(sub)s has no support for either 'sh' commands or\n"
-                     "# completions in your shell '%(shell)s'\n\n" % fmt_args )
+            msg += dd("""\
+                # Warning: %(sub)s has no support for either 'sh' commands or
+                # completions in your shell '%(shell)s'
+
+                """ % fmt_args )
+        # Print message to stderr and exit
         die(msg)
 
+    # alternatively, if init is being called to get its out output evalled:
 
-
+    # Add to PATH
     print 'export PATH="%s:%s/bin"' % (os.environ['PATH'], sub_root)
 
     if shell in profiles:
-        print """
+        from textwrap import dedent as dd
+        print dd("""\
         source "%(sub_root)s/completions/sub.%(shell)s"
         _sub_wrapper() {
-            [[ -z $1 ]] && command %(sub)s || true
+            if [[ -z $1 ]]; then
+                command %(sub)s
+                return $?
+            fi
             local running_path=%(sub_root)s/libexec
             local running_command
             local cmd=""
@@ -276,12 +383,11 @@ def sub_init(args, sub_root):
             done
             command %(sub)s $running_command "$@"
         }
-        """ % fmt_args
+        """ % fmt_args)
         if shell == 'bash':
             print "alias %(sub)s=_%(sub)s_wrapper" % fmt_args
         elif shell == 'zsh':
             print "%(sub)s=_%(sub)s_wrapper" % fmt_args
-
 
 
 @traced
@@ -305,47 +411,45 @@ def main(argv=[__name__]):
         # The 'commands' subcommand is handled here, there is no need to
         # dispatch to external script.
         if args[0] == 'commands':
-            DEBUG('SUB: handling "commands" subcommand')
             args.pop(0)
             ret = sub_commands(args, libexec_path)
             return 0 if ret else 1
 
         # The completions subcommand is also handled internally
         if args[0] == 'completions':
-            DEBUG('SUB: handling "completions" subcommand')
             args.pop(0)
             ret = sub_completions(args, libexec_path)
             return 0 if ret else 1
 
         # Handling internal 'init' subcommand
         if args[0] == 'init':
-            DEBUG('SUB: handling "init" subcommand')
             args.pop(0)
             ret = sub_init(args, sub_root)
             return 0 if ret else 1
 
-        DEBUG('SUB: will attempt to find subcommand with args: %s' % args)
+        DEBUG('will attempt to find subcommand with args: %s' % args)
 
         # Find the path to the requested subcommand
         (command_path, command, flags) = find_command_path(libexec_path, args)
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
-            DEBUG("SUB: subcommand %s is a container. Showing help" % command)
+            DEBUG("subcommand %s is a container. Showing help" % command)
             sub_help([command_path] + command)
 
         # We could not find the command, show error
         if command_path is None or not os.access(command_path, os.X_OK):
-            DEBUG("SUB: subcommand %s was not found. Showing error" % command)
+            DEBUG("subcommand %s was not found. Showing error" % command)
             die("%s: no such command `%s'\n" % (SUBNAME, ' '.join(command)))
 
         # Or everything went well, so run the command
-        DEBUG("SUB: subcommand %s was found. Executing with args: %s" % (command, flags))
+        DEBUG("subcommand %s was found. Executing with args: %s" % (command, flags))
         os.execvp(command_path, [command_path] + flags)
 
 
     except KeyboardInterrupt:
         sys.exit(-1)
+
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv) or 0)
