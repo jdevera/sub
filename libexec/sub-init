@@ -89,6 +89,7 @@ _sub_wrapper() {
             return \$?
         fi
     done
+    command sub \$running_command "\$@"
 }
 EOS
 
