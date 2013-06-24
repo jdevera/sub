@@ -171,6 +171,7 @@ def find_command_path(start_dir, argv):
 
     return (running_path, command, argv[shift+1:])
 
+
 @traced
 def provides_completions(command_path):
     """
@@ -184,6 +185,7 @@ def provides_completions(command_path):
             if line.lower().startswith(compl_line):
                 return True
     return False
+
 
 @traced
 def sub_completions(command, libexec_path):
@@ -207,6 +209,80 @@ def sub_completions(command, libexec_path):
         DEBUG("COMPLETIONS: %s does not provide completions" % command_path)
 
 
+@traced
+def sub_init(args, sub_root):
+    """
+    Run the init subcommand
+    """
+    doPrint = args and args[0] == '-'
+    if doPrint:
+        args.pop(0)
+        DEBUG("INIT: Called by shell")
+    else:
+        DEBUG("INIT: Called by user")
+
+    shell = args.pop(0) if args else os.path.basename(os.environ.get('SHELL', ''))
+    profiles = dict(
+        bash = '~/.bash_profile',
+        zsh  = '~/.zshenv'
+        )
+
+    profile = profiles.get(shell, 'your profile')
+    fmt_args = dict(sub=SUBNAME, profile=profile, sub_root=sub_root, shell=shell)
+    DEBUG("INIT: parameters: %s" % fmt_args)
+
+    if not doPrint:
+        msg = ( "# Load %(sub)s automatically by adding\n"
+                "# the following to %(profile)s:\n"
+                "\n"
+                'eval "$(%(sub_root)s/bin/%(sub)s init -)"\n'
+                "\n" % fmt_args)
+        if shell not in profiles:
+            msg += ( "# Warning: %(sub)s has no support for either 'sh' commands or\n"
+                     "# completions in your shell '%(shell)s'\n\n" % fmt_args )
+        die(msg)
+
+
+
+    print 'export PATH="%s:%s/bin"' % (os.environ['PATH'], sub_root)
+
+    if shell in profiles:
+        print """
+        source "%(sub_root)s/completions/sub.%(shell)s"
+        _sub_wrapper() {
+            [[ -z $1 ]] && command %(sub)s || true
+            local running_path=%(sub_root)s/libexec
+            local running_command
+            local cmd=""
+            for command in $@
+            do
+                if [[ -d $running_path/sub-$command ]]; then
+                    running_path=$running_path/sub-$command
+                    running_command="$running_command $command"
+                    shift
+                    continue
+                elif [[ -f $running_path/sub-sh-$command ]]; then
+                    cmd="$running_command sh-$command"
+                    shift
+                else
+                    command %(sub)s $running_command "$@"
+                    return $?
+                fi
+
+                if [[ -n $cmd ]]; then
+                    eval "$(command %(sub)s $cmd "$@")"
+                    return $?
+                fi
+            done
+            command %(sub)s $running_command "$@"
+        }
+        """ % fmt_args
+        if shell == 'bash':
+            print "alias %(sub)s=_%(sub)s_wrapper" % fmt_args
+        elif shell == 'zsh':
+            print "%(sub)s=_%(sub)s_wrapper" % fmt_args
+
+
 
 @traced
 def main(argv=[__name__]):
@@ -216,7 +292,8 @@ def main(argv=[__name__]):
         # Add this sub's main directory to the environment
         libexec_path = os.path.dirname(os.path.realpath(__file__))
         sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
-        os.environ[sub_root_env_name] = os.path.dirname(libexec_path)
+        sub_root = os.path.dirname(libexec_path)
+        os.environ[sub_root_env_name] = sub_root
 
         # And also add the libexec directory to the PATH
         path_prepend(libexec_path)
@@ -238,6 +315,13 @@ def main(argv=[__name__]):
             DEBUG('SUB: handling "completions" subcommand')
             args.pop(0)
             ret = sub_completions(args, libexec_path)
+            return 0 if ret else 1
+
+        # Handling internal 'init' subcommand
+        if args[0] == 'init':
+            DEBUG('SUB: handling "init" subcommand')
+            args.pop(0)
+            ret = sub_init(args, sub_root)
             return 0 if ret else 1
 
         DEBUG('SUB: will attempt to find subcommand with args: %s' % args)
