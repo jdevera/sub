@@ -15,6 +15,7 @@ import logging
 SUBNAME = 'sub'
 sub_root = None
 libexec_path = None
+internal_commands = {}
 
 # Configure logging
 # -----------------------------------------------------------------------------
@@ -26,6 +27,7 @@ if 'SUBDEBUG' in os.environ:
     logging.basicConfig(filename='sub.log', level=logging.DEBUG)
     DEBUGGING = True
     debug_prefix = SUBNAME.upper()
+    trace_depth = 0
 # -----------------------------------------------------------------------------
 
 def decorator(dec):
@@ -69,29 +71,42 @@ def traced(f):
         return f
 
     def wrapped(*args, **kwargs):
-        logging.debug("%s:TRACE: Entering %s with args: %s, %s" % (
-                      debug_prefix, f.__name__, args, kwargs))
-        return f(*args, **kwargs)
+        global trace_depth
+        if f.__name__ == 'main':
+            logging.debug("SUB: --------------------------------------------------------------------")
+            logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
+            logging.debug("SUB: --------------------------------------------------------------------")
+        logging.debug("%12s:TRACE: %sEntering %s with args: %s, %s" % (
+                      debug_prefix, ("| " * trace_depth), f.__name__, args, kwargs))
+        trace_depth += 1
 
-    def wrapped_main(*args, **kwargs):
-        logging.debug("SUB: --------------------------------------------------------------------")
-        logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
-        logging.debug("SUB: --------------------------------------------------------------------")
-        logging.debug("SUB:TRACE: Entering %s with args: %s, %s" % (f.__name__, args, kwargs))
-        return f(*args, **kwargs)
+        ret = f(*args, **kwargs)
 
-    newf = wrapped_main if f.__name__ == 'main' else wrapped
-    return newf
+        trace_depth -= 1
+        logging.debug("%12s:TRACE: %sReturning from %s with value: %s" % (
+            debug_prefix, ("| " * trace_depth), f.__name__, ret))
+        return ret
+
+    return wrapped
 
 @decorator
 def command(f):
     """
     A decorator for commands implemented internally.
 
+    It registers the decorated function as an internal command.
+
     It sets the logging prefix in debugging mode so that all log entries
     indicate the command that is being run.
     """
-    if not DEBUGGING or not f.__name__.startswith('sub_'):
+    if not f.__name__.startswith('sub_'):
+        return f
+
+    global internal_commands
+
+    command_name = f.__name__[4:]
+    if not DEBUGGING:
+        internal_commands[command_name] = f
         return f
     command_name = f.__name__[4:]
     def wrapped(*args, **kwargs):
@@ -102,14 +117,24 @@ def command(f):
         r = f(*args, **kwargs)
         debug_prefix = old_debug_prefix
         return r
+    internal_commands[command_name] = wrapped
     return wrapped
+
+
+@decorator
+def provide_completions(f):
+    """
+    A decorator that declares that a internal command provides completions
+    """
+    f.provides_completions = True
+    return f
 
 @debugonly
 def DEBUG(msg, *args, **kwargs):
     """
     Send debug messages to the log. Enabled only on debug mode.
     """
-    logging.debug("%s: %s" % (debug_prefix, msg), *args, **kwargs)
+    logging.debug("%12s: %s" % (debug_prefix, msg), *args, **kwargs)
 
 # -----------------------------------------------------------------------------
 
@@ -153,13 +178,17 @@ def sub_help(help_args = None):
 
 
 @traced
-def print_container_commands(container_path, sh_flag = None):
+def print_container_commands(container_path, sh_flag = None, only_containers = False):
     """
     Print the commands available in a given path
     """
     glob_pattern = os.path.join(container_path, mkcmd('*'))
     commands = []
+    if not sh_flag and container_path == libexec_path and not only_containers:
+        commands = ['commands', 'init', 'completions']
     for command in glob.iglob(glob_pattern):
+        if only_containers and not os.path.isdir(command):
+            continue
         DEBUG("command '%s' matched glob pattern '%s'", command, glob_pattern)
         # Leave only the command name without prefix
         command = command[len(glob_pattern)-1:]
@@ -179,24 +208,33 @@ def print_container_commands(container_path, sh_flag = None):
 
 @traced
 @command
-def sub_commands(command):
+@provide_completions
+def sub_commands(args):
     """
     Run the commands subcommand
     """
+    if args is None:
+        args = []
     sh_flag = None
-    if command:
-        if command[0] == '--sh':
+    only_containers = False
+    if args:
+        if args[0] == '--complete':
+            args = args[1:-1]
+            DEBUG("Completing %s", args)
+            only_containers = True
+        elif args[0] == '--sh':
             sh_flag = True
-            command.pop(0)
-        elif command[0] == '--no-sh':
+            args.pop(0)
+        elif args[0] == '--no-sh':
             sh_flag = False
-            command.pop(0)
+            args.pop(0)
+    command = args
     # Find the path to the container
     container_path = os.path.join(libexec_path, *[ mkcmd(c) for c in command])
 
     if os.path.isdir(container_path):
         DEBUG("Container path %s exists", container_path)
-        print_container_commands(container_path, sh_flag)
+        print_container_commands(container_path, sh_flag, only_containers)
         return True
     return False
 
@@ -273,14 +311,20 @@ def provides_completions(command_path):
 
 @traced
 @command
-def sub_completions(command):
+def sub_completions(args = None):
     """
     Run the completions subcommand
     """
-    if len(command) == 0:
+    if not args:
         die("usage: %s completions COMMAND [arg1 arg2...]" % SUBNAME)
+    internal_command = get_internal_command(args[0])
+    if internal_command is not None and getattr(internal_command, 'provides_completions', False):
+        DEBUG("Will complete by calling internal command %s with --complete", args[0])
+        args.pop(0)
+        return internal_command(['--complete'] + args)
+
     # Pass all arguments but last
-    (command_path, command, flags) = find_command_path(libexec_path, command[:-1])
+    (command_path, command, flags) = find_command_path(libexec_path, args[:-1])
     if command_path is None:
         DEBUG ("command %s not found" % (command[:-1]))
         return True
@@ -289,14 +333,14 @@ def sub_completions(command):
         return sub_commands(command)
     elif provides_completions(command_path):
         DEBUG("Will complete by calling script %s --complete" % command_path)
-        os.execvp(command_path, [command_path, '--complete'])
+        os.execvp(command_path, [command_path, '--complete'] + flags)
     else:
         DEBUG("%s does not provide completions" % command_path)
 
 
 @traced
 @command
-def sub_init(args):
+def sub_init(args = None):
     """
     Run the init subcommand
     """
@@ -392,6 +436,9 @@ def sub_init(args):
         elif shell == 'zsh':
             print "%(sub)s=_%(sub)s_wrapper" % fmt_args
 
+@traced
+def get_internal_command(name):
+    return internal_commands.get(name, None)
 
 @traced
 def main(argv=[__name__]):
