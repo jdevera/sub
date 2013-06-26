@@ -20,7 +20,7 @@ sub_root = None
 libexec_path = None
 internal_commands = {}
 DOC_FILE = 'doc.txt'
-DIR_PREFIX = '+'
+DIR_PREFIX = u'↬ '
 
 # }}}
 # Configure logging {{{
@@ -271,7 +271,7 @@ def get_container_summaries(container):
             continue
         if os.path.isdir(command_path):
             command_path = os.path.join(command_path, DOC_FILE)
-            command = "%s%s" % (DIR_PREFIX, command)
+            command = u"%s%s" % (DIR_PREFIX, command)
         if os.path.exists(command_path) and not os.path.islink(command_path):
             summary = get_summary(command_path)
             if summary is not None:
