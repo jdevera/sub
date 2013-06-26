@@ -15,7 +15,7 @@ from textwrap import dedent as dd
 # }}}
 # Globals {{{
 
-SUBNAME = 'sub'
+SUBNAME = os.path.basename(__file__)
 sub_root = None
 libexec_path = None
 internal_commands = {}
