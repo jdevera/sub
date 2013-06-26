@@ -15,12 +15,13 @@ from textwrap import dedent as dd
 # }}}
 # Globals {{{
 
-SUBNAME = 'sub'
+SUBNAME = os.path.basename(__file__)
 sub_root = None
 libexec_path = None
 internal_commands = {}
 DOC_FILE = 'doc.txt'
 DIR_PREFIX = u'↬ '
+
 
 # }}}
 # Configure logging {{{
@@ -141,6 +142,24 @@ def provide_completions(f):
 
 # }}}
 # Utility functions {{{
+def init_sub_name():
+    """
+    Check if the the current sub name needs to be changed, and effect the
+    change if so.
+
+    The sub name is taken from the name of the file or link, but it can be
+    overriden with an environment variable called SUB_NAME. This means that a
+    simple wrapper around sub could just be:
+
+    SUB_NAME=myname command sub
+    """
+    global SUBNAME
+    new_name = os.environ.get('SUB_NAME', None)
+    if new_name is not None:
+        DEBUG("Overriding SUB name based on environment variable SUB_NAME. "
+              "New name is '%s'" % new_name)
+        SUBNAME = new_name
+
 
 @debugonly
 def DEBUG(msg, *args, **kwargs):
@@ -601,6 +620,10 @@ def main(argv=[__name__]):
     global libexec_path
     eval_mode = False
     try:
+
+        # Apply any necessary name overrides
+        init_sub_name()
+
         # Add this sub's main directory to the environment
         libexec_path = os.path.dirname(os.path.realpath(__file__))
         sub_root = os.path.dirname(libexec_path)
