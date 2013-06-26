@@ -4,20 +4,26 @@
 """
 Sub: a script organization tool.
 """
-
+# Imports {{{
 import sys
 import os
 import glob
 import logging
+import subprocess
+from textwrap import dedent as dd
 
+# }}}
+# Globals {{{
 
-# Globals
 SUBNAME = 'sub'
 sub_root = None
 libexec_path = None
 internal_commands = {}
+DOC_FILE = 'doc.txt'
+DIR_PREFIX = '+'
 
-# Configure logging
+# }}}
+# Configure logging {{{
 # -----------------------------------------------------------------------------
 # Enable logging by setting the SUBDEBUG environment variable to any value
 # -----------------------------------------------------------------------------
@@ -29,6 +35,9 @@ if 'SUBDEBUG' in os.environ:
     debug_prefix = SUBNAME.upper()
     trace_depth = 0
 # -----------------------------------------------------------------------------
+
+# }}}
+# Decorators {{{
 
 def decorator(dec):
     """
@@ -73,9 +82,9 @@ def traced(f):
     def wrapped(*args, **kwargs):
         global trace_depth
         if f.__name__ == 'main':
-            logging.debug("SUB: --------------------------------------------------------------------")
-            logging.debug("SUB: Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
-            logging.debug("SUB: --------------------------------------------------------------------")
+            logging.debug(" --------------------------------------------------------------------")
+            logging.debug(" Running %s %s" % (SUBNAME, " ".join(args[0][1:])))
+            logging.debug(" --------------------------------------------------------------------")
         logging.debug("%12s:TRACE: %sEntering %s with args: %s, %s" % (
                       debug_prefix, ("| " * trace_depth), f.__name__, args, kwargs))
         trace_depth += 1
@@ -105,8 +114,9 @@ def command(f):
     global internal_commands
 
     command_name = f.__name__[4:]
+    internal_commands[command_name] = f.__name__
     if not DEBUGGING:
-        internal_commands[command_name] = f
+
         return f
     command_name = f.__name__[4:]
     def wrapped(*args, **kwargs):
@@ -117,7 +127,6 @@ def command(f):
         r = f(*args, **kwargs)
         debug_prefix = old_debug_prefix
         return r
-    internal_commands[command_name] = wrapped
     return wrapped
 
 
@@ -129,6 +138,10 @@ def provide_completions(f):
     f.provides_completions = True
     return f
 
+
+# }}}
+# Utility functions {{{
+
 @debugonly
 def DEBUG(msg, *args, **kwargs):
     """
@@ -137,7 +150,6 @@ def DEBUG(msg, *args, **kwargs):
     logging.debug("%12s: %s" % (debug_prefix, msg), *args, **kwargs)
 
 # -----------------------------------------------------------------------------
-
 
 @traced
 def path_prepend(directory):
@@ -164,83 +176,8 @@ def die(error):
     sys.stderr.flush()
     sys.exit(1)
 
-
 @traced
-@command
-def sub_help(help_args = None):
-    """
-    Run the help subcommand
-    """
-    if help_args is None:
-        help_args = []
-    help_command = mkcmd('help')
-    os.execvp(help_command, [help_command] + help_args)
-
-
-@traced
-def print_container_commands(container_path, sh_flag = None, only_containers = False):
-    """
-    Print the commands available in a given path
-    """
-    glob_pattern = os.path.join(container_path, mkcmd('*'))
-    commands = []
-    if not sh_flag and container_path == libexec_path and not only_containers:
-        commands = ['commands', 'init', 'completions']
-    for command in glob.iglob(glob_pattern):
-        if only_containers and not os.path.isdir(command):
-            continue
-        DEBUG("command '%s' matched glob pattern '%s'", command, glob_pattern)
-        # Leave only the command name without prefix
-        command = command[len(glob_pattern)-1:]
-        # If it is an 'sh-type' command, also remove the 'sh-' prefix
-        is_sh = command.startswith('sh-')
-        if is_sh:
-            if sh_flag is None or sh_flag == True:
-                commands.append(command[3:])
-        else:
-            if sh_flag is None or sh_flag == False:
-                commands.append(command)
-    # sort | uniq, python style
-    DEBUG("These commands passed the filter: %s", commands)
-    for cmd in sorted(set(commands)):
-        print cmd
-
-
-@traced
-@command
-@provide_completions
-def sub_commands(args):
-    """
-    Run the commands subcommand
-    """
-    if args is None:
-        args = []
-    sh_flag = None
-    only_containers = False
-    if args:
-        if args[0] == '--complete':
-            args = args[1:-1]
-            DEBUG("Completing %s", args)
-            only_containers = True
-        elif args[0] == '--sh':
-            sh_flag = True
-            args.pop(0)
-        elif args[0] == '--no-sh':
-            sh_flag = False
-            args.pop(0)
-    command = args
-    # Find the path to the container
-    container_path = os.path.join(libexec_path, *[ mkcmd(c) for c in command])
-
-    if os.path.isdir(container_path):
-        DEBUG("Container path %s exists", container_path)
-        print_container_commands(container_path, sh_flag, only_containers)
-        return True
-    return False
-
-
-@traced
-def find_command_path(start_dir, argv):
+def find_command_path(argv, start_dir = None):
     """
     Given a command line with tokens representing both the subcommand structure
     and eventually the arguments for a command, figure out the path to the
@@ -255,7 +192,7 @@ def find_command_path(start_dir, argv):
         * The arguments to be passed to the command. this will be None if the
           command cannot be found.
     """
-    running_path = start_dir
+    running_path = libexec_path if start_dir is None else start_dir
     shift = 0
     command = []
     for (shift, token) in enumerate(argv):
@@ -293,6 +230,236 @@ def find_command_path(start_dir, argv):
 
     return (running_path, command, argv[shift+1:])
 
+@traced
+def get_internal_command(name):
+    func_name = internal_commands.get(name, None)
+    return globals()[func_name]
+
+
+# }}}
+# Internal command: HELP {{{
+@traced
+def print_container_help(container, command = None):
+    docfile = os.path.join(container, DOC_FILE)
+    if os.path.isfile(docfile):
+        usage, helptext = get_usage_and_help(docfile)
+
+    command = '' if command is None else (" ".join(command) + " ")
+    print "Usage: sub %s<command> [<args>]" % command
+    if helptext is not None:
+        print
+        print helptext.rstrip()
+        print
+    summaries = get_container_summaries(container)
+    if summaries is not None:
+        msg = dd("""\
+            Some useful %(subname)s %(command)scommands are:
+            %%(summaries)s
+
+            See '%(subname)s help %(command)s<command>' for information on a specific command.""" %(
+            dict(subname = SUBNAME, command = command)))
+
+        print msg % dict(summaries=summaries)
+
+
+@traced
+def get_container_summaries(container):
+    summaries = []
+    for command in get_container_commands(container):
+        (command_path, _, _) = find_command_path([command], container)
+        if command_path is None:
+            continue
+        if os.path.isdir(command_path):
+            command_path = os.path.join(command_path, DOC_FILE)
+            command = "%s%s" % (DIR_PREFIX, command)
+        if os.path.exists(command_path) and not os.path.islink(command_path):
+            summary = get_summary(command_path)
+            if summary is not None:
+                summaries.append((command, summary))
+    columns = int(subprocess.check_output(['tput', 'cols']))
+    max_length = max([ len(s[0]) for s in summaries ])
+    summary_length = columns - max_length - 6
+    summary_format = "   %-" + str(max_length) + "s  %s"
+    return "\n".join([ summary_format % (c, s[:summary_length]) for (c, s) in summaries ]) if summaries else None
+
+@traced
+def get_summary(afile):
+    summary = None
+    max_lines_to_check = 100
+    lines_checked = 0
+    with file(afile) as fin:
+        for line in fin:
+            lines_checked += 1
+            if lines_checked > max_lines_to_check:
+                DEBUG("Exceeded the maximum of %d lines looking for summary",
+                      max_lines_to_check)
+                break
+            if line.startswith("# Summary: "):
+                summary = line[11:].strip()
+                break
+    return summary
+
+@traced
+def get_usage_and_help(afile):
+    usage, helptext = None, None
+    in_help = False
+    max_lines_to_check = 100
+    lines_checked = 0
+    with file(afile) as fin:
+        for line in fin:
+            lines_checked += 1
+            if lines_checked > max_lines_to_check and not in_help:
+                DEBUG("Exceeded the maximum of %d lines looking for help comments",
+                      max_lines_to_check)
+                break
+            if line.startswith("# Usage: "):
+                usage = line[1:].strip()
+                if helptext is not None:
+                    break
+                continue
+            elif line.startswith("# Help: "):
+                in_help = True
+                helptext = [line[8:]]
+            elif in_help:
+                if line.startswith("# "):
+                    helptext.append(line[2:])
+                else:
+                    in_help = False
+    if helptext is not None:
+        helptext = "".join(helptext)
+
+    return usage, helptext
+
+
+@traced
+def print_file_help(afile):
+    usage, helptext = get_usage_and_help(afile)
+    if usage is not None:
+        DEBUG("Usage comment found for %s: %s", afile, usage)
+        print usage
+        if helptext is not None:
+            DEBUG("Help comment found for %s: %s", afile, helptext)
+            print
+            print "".join(helptext)
+    else:
+        DEBUG("Usage comment NOT found for %s", afile)
+        DEBUG("Not showing helptext: %s", helptext)
+        print "This command isn't documented yet."
+
+
+@traced
+@command
+@provide_completions
+def sub_help(args = None):
+    """
+    Run the help subcommand
+    """
+    if args is None:
+       args = []
+    if args and args[0] == '--complete':
+        args = args[1:-1]
+        DEBUG("Completing %s", args)
+        return sub_commands(args)
+
+    # -------------------------------------------------------------------------
+    # If the first argument is a directory, it means somebody ran
+    #
+    #    sub command1 command2
+    #
+    # where command2 contains more subcommands. In that case, show help from
+    # the doc file if present and exit with error.
+    # -------------------------------------------------------------------------
+    if args and os.path.isdir(args[0]):
+        print_container_help(args[0])
+        return False
+
+    # -------------------------------------------------------------------------
+    # resolve the path of the command based on its tokens. It no arguments were
+    # used to call this script, the path will resolve to the one of libexec,
+    # which will then print help for the top level commands.
+    # -------------------------------------------------------------------------
+    (command_path, command, flags) = find_command_path(args)
+    if command_path is not None:
+        if os.path.isdir(command_path):
+            print_container_help(command_path, args)
+        else:
+            print_file_help(command_path)
+    else:
+        die("%s: no such command `%s'" % (SUBNAME, " ".join(args)))
+
+
+# }}}
+# Internal command: COMMANDS {{{
+
+@traced
+def print_container_commands(container_path, sh_flag = None, only_containers = False):
+    for command in get_container_commands(container_path, sh_flag, only_containers):
+        print command
+
+@traced
+def get_container_commands(container_path, sh_flag = None, only_containers = False):
+    """
+    Print the commands available in a given path
+    """
+    glob_pattern = os.path.join(container_path, mkcmd('*'))
+    commands = []
+    if not sh_flag and container_path == libexec_path and not only_containers:
+        commands = ['commands', 'init', 'completions']
+    for command in glob.iglob(glob_pattern):
+        if only_containers and not os.path.isdir(command):
+            continue
+        DEBUG("command '%s' matched glob pattern '%s'", command, glob_pattern)
+        # Leave only the command name without prefix
+        command = command[len(glob_pattern)-1:]
+        # If it is an 'sh-type' command, also remove the 'sh-' prefix
+        is_sh = command.startswith('sh-')
+        if is_sh:
+            if sh_flag is None or sh_flag == True:
+                commands.append(command[3:])
+        else:
+            if sh_flag is None or sh_flag == False:
+                commands.append(command)
+    # sort | uniq, python style
+    DEBUG("These commands passed the filter: %s", commands)
+    for cmd in sorted(set(commands)):
+        yield cmd
+
+
+@traced
+@command
+@provide_completions
+def sub_commands(args):
+    """
+    Run the commands subcommand
+    """
+    if args is None:
+        args = []
+    sh_flag = None
+    only_containers = False
+    if args:
+        if args[0] == '--complete':
+            args = args[1:-1]
+            DEBUG("Completing %s", args)
+            only_containers = True
+        elif args[0] == '--sh':
+            sh_flag = True
+            args.pop(0)
+        elif args[0] == '--no-sh':
+            sh_flag = False
+            args.pop(0)
+    command = args
+    # Find the path to the container
+    container_path = os.path.join(libexec_path, *[ mkcmd(c) for c in command])
+
+    if os.path.isdir(container_path):
+        DEBUG("Container path %s exists", container_path)
+        print_container_commands(container_path, sh_flag, only_containers)
+        return True
+    return False
+
+
+# }}}
+# Internal command: COMPLETIONS {{{
 
 @traced
 def provides_completions(command_path):
@@ -324,7 +491,7 @@ def sub_completions(args = None):
         return internal_command(['--complete'] + args)
 
     # Pass all arguments but last
-    (command_path, command, flags) = find_command_path(libexec_path, args[:-1])
+    (command_path, command, flags) = find_command_path(args[:-1])
     if command_path is None:
         DEBUG ("command %s not found" % (command[:-1]))
         return True
@@ -338,6 +505,8 @@ def sub_completions(args = None):
         DEBUG("%s does not provide completions" % command_path)
 
 
+# }}}
+# Internal command: INIT {{{
 @traced
 @command
 def sub_init(args = None):
@@ -374,7 +543,6 @@ def sub_init(args = None):
     DEBUG("Common arguments for strings: %s" % fmt_args)
 
     if not do_print:
-        from textwrap import dedent as dd
         msg = dd("""\
             # Load %(sub)s automatically by adding
             # the following to %(profile)s:
@@ -397,7 +565,6 @@ def sub_init(args = None):
     print 'export PATH="%s:%s/bin"' % (os.environ['PATH'], sub_root)
 
     if shell in profiles:
-        from textwrap import dedent as dd
         print dd("""\
         source "%(sub_root)s/completions/sub.%(shell)s"
         _sub_wrapper() {
@@ -436,10 +603,9 @@ def sub_init(args = None):
         elif shell == 'zsh':
             print "%(sub)s=_%(sub)s_wrapper" % fmt_args
 
-@traced
-def get_internal_command(name):
-    return internal_commands.get(name, None)
 
+# }}}
+# MAIN {{{
 @traced
 def main(argv=[__name__]):
     """ Run this program """
@@ -463,29 +629,18 @@ def main(argv=[__name__]):
         if len(args) < 1 or args[0] in ('-h', '--help'):
             sub_help()
 
-        # The 'commands' subcommand is handled here, there is no need to
-        # dispatch to external script.
-        if args[0] == 'commands':
+        # If the requested command is one that has been registered as
+        # internally managed through the @command decorator, run it now
+        internal_command = get_internal_command(args[0])
+        if internal_command is not None:
             args.pop(0)
-            ret = sub_commands(args)
-            return 0 if ret else 1
-
-        # The completions subcommand is also handled internally
-        if args[0] == 'completions':
-            args.pop(0)
-            ret = sub_completions(args)
-            return 0 if ret else 1
-
-        # Handling internal 'init' subcommand
-        if args[0] == 'init':
-            args.pop(0)
-            ret = sub_init(args)
+            ret = internal_command(args)
             return 0 if ret else 1
 
         DEBUG('will attempt to find subcommand with args: %s' % args)
 
         # Find the path to the requested subcommand
-        (command_path, command, flags) = find_command_path(libexec_path, args)
+        (command_path, command, flags) = find_command_path(args)
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
@@ -508,3 +663,6 @@ def main(argv=[__name__]):
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv) or 0)
+
+# }}}
+# vim: fdm=marker : ts=4 : sw=4 : expandtab :
