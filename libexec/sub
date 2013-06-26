@@ -173,6 +173,7 @@ def die(error):
     Show message on stderr and exit
     """
     sys.stderr.write(error)
+    sys.stderr.write("\n")
     sys.stderr.flush()
     sys.exit(1)
 
@@ -195,6 +196,7 @@ def find_command_path(argv, start_dir = None):
     running_path = libexec_path if start_dir is None else start_dir
     shift = 0
     command = []
+    is_sh = False
     for (shift, token) in enumerate(argv):
 
         # If we still have not resolved the script name and we are already
@@ -221,19 +223,20 @@ def find_command_path(argv, start_dir = None):
         possible_path_sh = os.path.join(running_path, mkcmd(token, shFlag=True))
         if os.access(possible_path_sh, os.X_OK):
             running_path=possible_path_sh
+            is_sh = True
             break
 
         # Otherwise, we have a token that is not a directory and appears before
         # the script is found. This is an error. Make sure we still return the
         # command, so it can be shown in the error.
-        return (None, command, None)
+        return (None, command, None, None)
 
-    return (running_path, command, argv[shift+1:])
+    return (running_path, command, argv[shift+1:], is_sh)
 
 @traced
 def get_internal_command(name):
     func_name = internal_commands.get(name, None)
-    return globals()[func_name]
+    return globals().get(func_name, None)
 
 
 # }}}
@@ -266,7 +269,7 @@ def print_container_help(container, command = None):
 def get_container_summaries(container):
     summaries = []
     for command in get_container_commands(container):
-        (command_path, _, _) = find_command_path([command], container)
+        command_path = find_command_path([command], container)[0]
         if command_path is None:
             continue
         if os.path.isdir(command_path):
@@ -378,7 +381,7 @@ def sub_help(args = None):
     # used to call this script, the path will resolve to the one of libexec,
     # which will then print help for the top level commands.
     # -------------------------------------------------------------------------
-    (command_path, command, flags) = find_command_path(args)
+    (command_path, command, flags, _) = find_command_path(args)
     if command_path is not None:
         if os.path.isdir(command_path):
             print_container_help(command_path, args)
@@ -491,7 +494,7 @@ def sub_completions(args = None):
         return internal_command(['--complete'] + args)
 
     # Pass all arguments but last
-    (command_path, command, flags) = find_command_path(args[:-1])
+    (command_path, command, flags, _) = find_command_path(args[:-1])
     if command_path is None:
         DEBUG ("command %s not found" % (command[:-1]))
         return True
@@ -570,32 +573,10 @@ def sub_init(args = None):
         _sub_wrapper() {
             if [[ -z $1 ]]; then
                 command %(sub)s
-                return $?
+            else
+                eval "$(command %(sub)s --eval "$@")"
             fi
-            local running_path=%(sub_root)s/libexec
-            local running_command
-            local cmd=""
-            for command in $@
-            do
-                if [[ -d $running_path/%(sub)s-$command ]]; then
-                    running_path=$running_path/%(sub)s-$command
-                    running_command="$running_command $command"
-                    shift
-                    continue
-                elif [[ -f $running_path/%(sub)s-sh-$command ]]; then
-                    cmd="$running_command sh-$command"
-                    shift
-                else
-                    command %(sub)s $running_command "$@"
-                    return $?
-                fi
-
-                if [[ -n $cmd ]]; then
-                    eval "$(command %(sub)s $cmd "$@")"
-                    return $?
-                fi
-            done
-            command %(sub)s $running_command "$@"
+            return $?
         }
         """ % fmt_args)
         if shell == 'bash':
@@ -612,6 +593,7 @@ def main(argv=[__name__]):
     args = argv[1:]
     global sub_root
     global libexec_path
+    eval_mode = False
     try:
         # Add this sub's main directory to the environment
         libexec_path = os.path.dirname(os.path.realpath(__file__))
@@ -629,10 +611,20 @@ def main(argv=[__name__]):
         if len(args) < 1 or args[0] in ('-h', '--help'):
             sub_help()
 
+        if args[0] == '--eval':
+            DEBUG("Running in eval mode")
+            eval_mode = True
+            args.pop(0)
+
         # If the requested command is one that has been registered as
         # internally managed through the @command decorator, run it now
         internal_command = get_internal_command(args[0])
         if internal_command is not None:
+            if eval_mode:
+                second_call = "%s %s" % (argv[0], " ".join([ "'%s'" % a for a in args]))
+                DEBUG("In eval mode, generate the second command call: %s" % second_call)
+                print second_call
+                sys.exit(0)
             args.pop(0)
             ret = internal_command(args)
             return 0 if ret else 1
@@ -640,17 +632,25 @@ def main(argv=[__name__]):
         DEBUG('will attempt to find subcommand with args: %s' % args)
 
         # Find the path to the requested subcommand
-        (command_path, command, flags) = find_command_path(args)
+        (command_path, command, flags, is_sh) = find_command_path(args)
+
+        # In eval mode, print out second call command before checking any errors
+        if eval_mode and not is_sh:
+            second_call = "%s %s" % (argv[0], " ".join([ "'%s'" % a for a in args]))
+            DEBUG("In eval mode, generate the second command call: %s" % second_call)
+            print second_call
+            sys.exit(0)
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
             DEBUG("subcommand %s is a container. Showing help" % command)
-            sub_help([command_path] + command)
+            return sub_help([command_path] + command)
+
 
         # We could not find the command, show error
         if command_path is None or not os.access(command_path, os.X_OK):
             DEBUG("subcommand %s was not found. Showing error" % command)
-            die("%s: no such command `%s'\n" % (SUBNAME, ' '.join(command)))
+            die("%s: no such command `%s'" % (SUBNAME, ' '.join(command)))
 
         # Or everything went well, so run the command
         DEBUG("subcommand %s was found. Executing with args: %s" % (command, flags))
