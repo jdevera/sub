@@ -245,7 +245,7 @@ def print_container_help(container, command = None):
         usage, helptext = get_usage_and_help(docfile)
 
     command = '' if command is None else (" ".join(command) + " ")
-    print "Usage: sub %s<command> [<args>]" % command
+    print "Usage: %s %s<command> [<args>]" % (SUBNAME, command)
     if helptext is not None:
         print
         print helptext.rstrip()
@@ -577,12 +577,12 @@ def sub_init(args = None):
             local cmd=""
             for command in $@
             do
-                if [[ -d $running_path/sub-$command ]]; then
-                    running_path=$running_path/sub-$command
+                if [[ -d $running_path/%(sub)s-$command ]]; then
+                    running_path=$running_path/%(sub)s-$command
                     running_command="$running_command $command"
                     shift
                     continue
-                elif [[ -f $running_path/sub-sh-$command ]]; then
+                elif [[ -f $running_path/%(sub)s-sh-$command ]]; then
                     cmd="$running_command sh-$command"
                     shift
                 else
