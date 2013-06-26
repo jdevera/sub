@@ -404,7 +404,7 @@ def get_container_commands(container_path, sh_flag = None, only_containers = Fal
     glob_pattern = os.path.join(container_path, mkcmd('*'))
     commands = []
     if not sh_flag and container_path == libexec_path and not only_containers:
-        commands = ['commands', 'init', 'completions']
+        commands = internal_commands.keys()
     for command in glob.iglob(glob_pattern):
         if only_containers and not os.path.isdir(command):
             continue
