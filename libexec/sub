@@ -247,7 +247,7 @@ def print_container_help(container, command = None):
     if os.path.isfile(docfile):
         usage, helptext = get_usage_and_help(docfile)
 
-    command = '' if command is None else (" ".join(command) + " ")
+    command = '' if not command else (" ".join(command) + " ")
     print "Usage: %s %s<command> [<args>]" % (SUBNAME, command)
     if helptext is not None:
         print
@@ -275,15 +275,20 @@ def get_container_summaries(container):
         if os.path.isdir(command_path):
             command_path = os.path.join(command_path, DOC_FILE)
             command = u"%s%s" % (DIR_PREFIX, command)
+            DEBUG("command %s is a directory, adding docfile: %s", command, command_path)
         if os.path.exists(command_path) and not os.path.islink(command_path):
+            DEBUG("Found docfile: %s, will get summary", command_path)
             summary = get_summary(command_path)
+            DEBUG("Summary for %s: %s", command, summary)
             if summary is not None:
                 summaries.append((command, summary))
-    columns = int(subprocess.check_output(['tput', 'cols']))
-    max_length = max([ len(s[0]) for s in summaries ])
-    summary_length = columns - max_length - 6
-    summary_format = "   %-" + str(max_length) + "s  %s"
-    return "\n".join([ summary_format % (c, s[:summary_length]) for (c, s) in summaries ]) if summaries else None
+    if summaries:
+        columns = int(subprocess.check_output(['tput', 'cols']))
+        max_length = max([ len(s[0]) for s in summaries ])
+        summary_length = columns - max_length - 6
+        summary_format = "   %-" + str(max_length) + "s  %s"
+        return "\n".join([ summary_format % (c, s[:summary_length]) for (c, s) in summaries ])
+    return None
 
 @traced
 def get_summary(afile):
@@ -387,6 +392,7 @@ def sub_help(args = None):
             print_container_help(command_path, args)
         else:
             print_file_help(command_path)
+        return True
     else:
         die("%s: no such command `%s'" % (SUBNAME, " ".join(args)))
 
@@ -609,7 +615,8 @@ def main(argv=[__name__]):
 
         # If user is just asking for help, give them help
         if len(args) < 1 or args[0] in ('-h', '--help'):
-            sub_help()
+            ret = sub_help()
+            return 0 if ret else 1
 
         if args[0] == '--eval':
             DEBUG("Running in eval mode")
