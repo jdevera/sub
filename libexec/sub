@@ -10,6 +10,7 @@ import os
 import glob
 import logging
 import subprocess
+import cStringIO
 from textwrap import dedent as dd
 
 # }}}
@@ -244,6 +245,7 @@ def get_internal_command(name):
 @traced
 def print_container_help(container, command = None):
     docfile = os.path.join(container, DOC_FILE)
+    helptext = None
     if os.path.isfile(docfile):
         usage, helptext = get_usage_and_help(docfile)
 
@@ -309,50 +311,80 @@ def get_summary(afile):
 
 @traced
 def get_usage_and_help(afile):
+    """
+    Get usage and helptext from the contents of a file-like object
+    """
     usage, helptext = None, None
     in_help = False
     max_lines_to_check = 100
     lines_checked = 0
-    with file(afile) as fin:
-        for line in fin:
-            lines_checked += 1
-            if lines_checked > max_lines_to_check and not in_help:
-                DEBUG("Exceeded the maximum of %d lines looking for help comments",
-                      max_lines_to_check)
+    for line in afile:
+        lines_checked += 1
+        if lines_checked > max_lines_to_check and not in_help:
+            DEBUG("Exceeded the maximum of %d lines looking for help comments",
+                  max_lines_to_check)
+            break
+        line = line.strip()
+        if line.startswith("# Usage: "):
+            usage = line[2:]
+            if helptext is not None:
                 break
-            if line.startswith("# Usage: "):
-                usage = line[1:].strip()
-                if helptext is not None:
-                    break
-                continue
-            elif line.startswith("# Help: "):
-                in_help = True
-                helptext = [line[8:]]
-            elif in_help:
-                if line.startswith("# "):
-                    helptext.append(line[2:])
-                else:
-                    in_help = False
+            continue
+        elif line.startswith("# Help: "):
+            in_help = True
+            helptext = [line[8:]]
+        elif in_help:
+            if line[0] == '#':
+                helptext.append(line[1:].lstrip())
+            else:
+                in_help = False
     if helptext is not None:
-        helptext = "".join(helptext)
+        helptext = "\n".join(helptext)
 
     return usage, helptext
 
 
+
 @traced
-def print_file_help(afile):
-    usage, helptext = get_usage_and_help(afile)
+def print_usage_help(usage, helptext, file_path):
+    """
+    Print out a formatted help message
+    """
     if usage is not None:
-        DEBUG("Usage comment found for %s: %s", afile, usage)
+        DEBUG("Usage comment found for %s: %s", file_path, usage)
         print usage
         if helptext is not None:
-            DEBUG("Help comment found for %s: %s", afile, helptext)
+            DEBUG("Help comment found for %s: %s", file_path, helptext)
             print
             print "".join(helptext)
     else:
-        DEBUG("Usage comment NOT found for %s", afile)
+        DEBUG("Usage comment NOT found for %s", file_path)
         DEBUG("Not showing helptext: %s", helptext)
         print "This command isn't documented yet."
+
+
+@traced
+def print_file_help(file_path):
+    """
+    Print help for a file, based on special comments in the file
+    """
+    with file(file_path) as fin:
+        usage, helptext = get_usage_and_help(fin)
+    print_usage_help(usage, helptext, file_path)
+
+
+@traced
+def print_internal_help(command_name):
+    """
+    Print help for an internal command, based on the comments within the
+    function's docstring
+    """
+    command_func = get_internal_command(command_name)
+    docs = dd(command_func.__doc__)
+    DEBUG("Printing help for internal command %s based on docstring: %s", command_name, docs)
+    fin = cStringIO.StringIO(docs)
+    usage, helptext = get_usage_and_help(fin)
+    print_usage_help(usage, helptext, command_name)
 
 
 @traced
@@ -361,6 +393,9 @@ def print_file_help(afile):
 def sub_help(args = None):
     """
     Run the help subcommand
+
+    # Usage: help <command>
+    # Help: Shows help for sub commands
     """
     if args is None:
        args = []
@@ -368,6 +403,12 @@ def sub_help(args = None):
         args = args[1:-1]
         DEBUG("Completing %s", args)
         return sub_commands(args)
+
+
+    if args and get_internal_command(args[0]) is not None:
+        DEBUG("Requested help for internal command %s", args[0])
+        print_internal_help(args[0])
+        return True
 
     # -------------------------------------------------------------------------
     # If the first argument is a directory, it means somebody ran
@@ -377,7 +418,7 @@ def sub_help(args = None):
     # where command2 contains more subcommands. In that case, show help from
     # the doc file if present and exit with error.
     # -------------------------------------------------------------------------
-    if args and os.path.isdir(args[0]):
+    if args and os.path.isdir(args[0]) and os.path.abspath(args[0]) == args[0]:
         print_container_help(args[0])
         return False
 
@@ -490,6 +531,10 @@ def provides_completions(command_path):
 def sub_completions(args = None):
     """
     Run the completions subcommand
+
+    # Usage: completions <command> [args]
+    # Help: Internal command to generate completions for shells
+
     """
     if not args:
         die("usage: %s completions COMMAND [arg1 arg2...]" % SUBNAME)
@@ -521,6 +566,13 @@ def sub_completions(args = None):
 def sub_init(args = None):
     """
     Run the init subcommand
+
+    # Usage: init [-] <shell>
+    # Help: When run bare, provides instructions on how to initialise this sub in your shell.
+    #
+    # When run with a hyphen, it will output the code to be evalled by the shell in order to get the sub working.
+    #
+    # It will try to to guess the current shell, but one can be specified by name in the command line.
     """
     do_print = args and args[0] == '-'
     if do_print:
