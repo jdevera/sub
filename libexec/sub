@@ -254,7 +254,8 @@ def print_container_help(container, command = None):
     docfile = os.path.join(container, DOC_FILE)
     helptext = None
     if os.path.isfile(docfile):
-        helptext = get_usage_and_help(docfile)[1]
+        with open(docfile) as fin:
+            helptext = get_usage_and_help(fin)[1]
 
     command = '' if not command else (" ".join(command) + " ")
     print "Usage: %s %s<command> [<args>]" % (SUBNAME, command)
