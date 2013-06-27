@@ -47,7 +47,7 @@ echo "Preparing your '$SUBNAME' sub!"
 if [[ $NAME != "sub" ]]; then
     rm bin/sub
 
-    for file in **/sub-*; do
+    for file in **/sub*; do
       prepare_sub "$file"
     done
 
@@ -70,7 +70,7 @@ Done! Enjoy your new sub! If you're happy with your sub, run:
 
 You can remove the example when you no longer need it:
 
-   rm libexec/${SUBNAME}-example
+   rm -r libexec/${SUBNAME}-example
 
 Made a mistake? Want to make a different sub? Run:
 
