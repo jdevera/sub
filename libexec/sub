@@ -646,7 +646,7 @@ def sub_init(args = None):
     if shell in profiles:
         print dd("""\
         source "%(sub_root)s/completions/sub.%(shell)s"
-        _sub_wrapper() {
+        _sub_%(sub)s_wrapper() {
             if [[ -z $1 ]]; then
                 command %(sub)s
             elif command %(sub)s --is-sh "$@"; then
@@ -658,9 +658,9 @@ def sub_init(args = None):
         }
         """ % fmt_args)
         if shell == 'bash':
-            print "alias %(sub)s=_%(sub)s_wrapper" % fmt_args
+            print "alias %(sub)s=_sub_%(sub)s_wrapper" % fmt_args
         elif shell == 'zsh':
-            print "%(sub)s=_%(sub)s_wrapper" % fmt_args
+            print "%(sub)s=_sub_%(sub)s_wrapper" % fmt_args
 
 
 # }}}
