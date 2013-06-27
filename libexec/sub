@@ -649,8 +649,10 @@ def sub_init(args = None):
         _sub_wrapper() {
             if [[ -z $1 ]]; then
                 command %(sub)s
+            elif command %(sub)s --is-sh "$@"; then
+                eval "$(command %(sub)s "$@")"
             else
-                eval "$(command %(sub)s --eval "$@")"
+                command %(sub)s "$@"
             fi
             return $?
         }
@@ -669,7 +671,7 @@ def main(argv=[__name__]):
     args = argv[1:]
     global SUB_ROOT
     global LIBEXEC_PATH
-    eval_mode = False
+    sh_check_mode = False
     try:
         # Add this sub's main directory to the environment
         LIBEXEC_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -688,9 +690,9 @@ def main(argv=[__name__]):
             ret = sub_help()
             return 0 if ret else 1
 
-        if args[0] == '--eval':
-            DEBUG("Running in eval mode")
-            eval_mode = True
+        if args[0] == '--is-sh':
+            DEBUG("Running in sh checking mode")
+            sh_check_mode = True
             args.pop(0)
 
         # If the requested command is one that has been registered as
@@ -698,11 +700,9 @@ def main(argv=[__name__]):
         # now
         int_command = get_internal_command(args[0])
         if int_command is not None:
-            if eval_mode:
-                second_call = "%s %s" % (argv[0], " ".join([ "'%s'" % a for a in args]))
-                DEBUG("In eval mode, generate the second command call: %s" % second_call)
-                print second_call
-                sys.exit(0)
+            if sh_check_mode:
+                DEBUG("In sh sheck mode, this was an internal command, no sh")
+                return 1
             args.pop(0)
             ret = int_command(args)
             return 0 if ret else 1
@@ -712,12 +712,10 @@ def main(argv=[__name__]):
         # Find the path to the requested subcommand
         (command_path, command, flags, is_sh) = find_command_path(args)
 
-        # In eval mode, print out second call command before checking any errors
-        if eval_mode and not is_sh:
-            second_call = "%s %s" % (argv[0], " ".join([ "'%s'" % a for a in args]))
-            DEBUG("In eval mode, generate the second command call: %s" % second_call)
-            print second_call
-            sys.exit(0)
+        # In sh check mode, return answer before checking any errors
+        if sh_check_mode:
+            DEBUG("In sh sheck mode, this is %sas sh command", '' if is_sh else 'not ')
+            return 0 if is_sh else 1
 
         # If we ended up with a directory, show help for that directory
         if command_path is not None and os.path.isdir(command_path):
