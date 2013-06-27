@@ -645,7 +645,7 @@ def sub_init(args = None):
 
     if shell in profiles:
         print dd("""\
-        source "%(sub_root)s/completions/sub.%(shell)s"
+        source "%(sub_root)s/completions/%(sub)s.%(shell)s"
         _sub_%(sub)s_wrapper() {
             if [[ -z $1 ]]; then
                 command %(sub)s
