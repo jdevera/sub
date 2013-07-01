@@ -26,7 +26,7 @@ prepare_sub() {
         done
         chmod_files "$path"
     elif [[ -f $path ]]; then
-        sed -i "s/\bsub\b/$SUBNAME/g;s/\b_SUB_ROOT\b/_$ENVNAME/g" "$path"
+        sed -i "s/\b\(_\)\?sub\b/\1$SUBNAME/g;s/\b_SUB_ROOT\b/_$ENVNAME/g" "$path"
     fi
 
     mv "$path" "$newpath"
