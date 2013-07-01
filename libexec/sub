@@ -259,8 +259,8 @@ def print_container_help(container, command = None):
 
     command = '' if not command else (" ".join(command) + " ")
     print "Usage: %s %s<command> [<args>]" % (SUBNAME, command)
+    print
     if helptext is not None:
-        print
         print helptext.rstrip()
         print
     summaries = get_container_summaries(container)
@@ -283,13 +283,13 @@ def get_container_summaries(container):
     summaries = []
     for command in get_container_commands(container):
         command_path = find_command_path([command], container)[0]
-        if command_path is None:
+        if command_path is None or os.path.islink(command_path):
             continue
         if os.path.isdir(command_path):
             command_path = os.path.join(command_path, DOC_FILE)
             command = u"%s%s" % (DIR_PREFIX, command)
             DEBUG("command %s is a directory, adding docfile: %s", command, command_path)
-        if os.path.exists(command_path) and not os.path.islink(command_path):
+        if os.path.exists(command_path):
             DEBUG("Found docfile: %s, will get summary", command_path)
             summary = get_summary(command_path)
             DEBUG("Summary for %s: %s", command, summary)
