@@ -11,11 +11,11 @@ import glob
 import logging
 import subprocess
 import cStringIO
+import re
 from textwrap import dedent as dd
 
 # }}}
 # Globals {{{
-
 SUBNAME = os.path.basename(__file__)
 SUB_ROOT = None
 LIBEXEC_PATH = None
@@ -242,6 +242,37 @@ def get_internal_command(name):
     return globals().get(func_name, None)
 
 
+class Matcher(object):
+    """
+    A more convenient way to check regex matches. It holds the latest match
+    result for further checks.
+
+    The current regex match mechanism does not allow for checking matches in
+    if/elif chains. Thanks to Matcher now one can do this:
+
+        >>> m = Matcher()
+        >>> s = "ba"
+        >>> if m.match(re.compile(r'^a(.)'), s):
+        >>>     print "A" + m.group(0)
+        >>> elif m.match(re.compile(r'^b(.)', s):
+        >>>     print "B" + m.group(0)
+        Ba
+
+    """
+    def __init__(self):
+        self.clear()
+    def match(self, regex, string):
+        self.m = regex.match(string)
+        if self.m is None:
+            return False
+        return True
+    def group(self, n):
+        if self.m is None:
+            return None
+        return self.m.group(n)
+    def clear(self):
+        self.m = None
+
 # }}}
 # Internal command: HELP {{{
 
@@ -334,26 +365,44 @@ def get_usage_and_help(afile):
     in_help = False
     max_lines_to_check = 100
     lines_checked = 0
+    leading_spaces = 0
+    re_usage = re.compile(r'^\s*#\s*Usage:\s*(.*)$')
+    re_help = re.compile(r'^\s*#(\s*)Help:\s*(.*)$')
+    re_help_cont_pat = r'^\s*#(\s{0,%d})(.*)$'
+    re_help_cont = None
+
+    matcher = Matcher()
     for line in afile:
         lines_checked += 1
         if lines_checked > max_lines_to_check and not in_help:
             DEBUG("Exceeded the maximum of %d lines looking for help comments",
                   max_lines_to_check)
             break
-        line = line.strip()
-        if line.startswith("# Usage: "):
-            usage = line[2:]
+        if usage is None and matcher.match(re_usage, line):
+            usage = "Usage: %s" % matcher.group(1)
             if helptext is not None:
                 break
             continue
-        elif line.startswith("# Help: "):
-            in_help = True
-            helptext = [line[8:]]
+            in_help = False
         elif in_help:
-            if line[0] == '#':
-                helptext.append(line[1:].lstrip())
+            if matcher.match(re_help_cont, line):
+                help_line = matcher.group(2)
+                # Support a number of blank lines at the beginning
+                if helptext or help_line != "":
+                    helptext.append(help_line)
             else:
                 in_help = False
+        elif helptext is None and matcher.match(re_help, line):
+            in_help = True
+            helptext = []
+            # Se the number of leading spaces to consume based on how many
+            # spaces are found between the comment symbol and the word Help
+            leading_spaces = len(str(matcher.group(1)))
+            re_help_cont = re.compile(re_help_cont_pat % leading_spaces)
+            first_help_line = matcher.group(2)
+            if first_help_line != "":
+                helptext.append(first_help_line)
+
     if helptext is not None:
         helptext = "\n".join(helptext)
 
