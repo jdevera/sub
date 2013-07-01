@@ -344,6 +344,8 @@ def get_summary(afile):
     summary = None
     max_lines_to_check = 100
     lines_checked = 0
+    re_summary = re.compile(r'^\s*#\s*Summary:\s*(.*)$')
+    matcher = Matcher()
     with file(afile) as fin:
         for line in fin:
             lines_checked += 1
@@ -351,8 +353,8 @@ def get_summary(afile):
                 DEBUG("Exceeded the maximum of %d lines looking for summary",
                       max_lines_to_check)
                 break
-            if line.startswith("# Summary: "):
-                summary = line[11:].strip()
+            if matcher.match(re_summary, line):
+                summary = matcher.group(1)
                 break
     return summary
 
