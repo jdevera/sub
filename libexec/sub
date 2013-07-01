@@ -362,12 +362,16 @@ def get_usage_and_help(afile):
 
 
 @traced
-def print_usage_help(usage, helptext, file_path):
+def print_usage_help(usage, helptext, file_path, command = None):
     """
     Print out a formatted help message
     """
     if usage is not None:
         DEBUG("Usage comment found for %s: %s", file_path, usage)
+        if command and "%COMMAND%" in usage:
+            DEBUG("Injecting command name into usage string")
+            command.insert(0, SUBNAME)
+            usage = usage.replace("%COMMAND%", " ".join(command))
         print usage
         if helptext is not None:
             DEBUG("Help comment found for %s: %s", file_path, helptext)
@@ -380,13 +384,13 @@ def print_usage_help(usage, helptext, file_path):
 
 
 @traced
-def print_file_help(file_path):
+def print_file_help(file_path, command = None):
     """
     Print help for a file, based on special comments in the file
     """
     with file(file_path) as fin:
         usage, helptext = get_usage_and_help(fin)
-    print_usage_help(usage, helptext, file_path)
+    print_usage_help(usage, helptext, file_path, command)
 
 
 @traced
@@ -400,7 +404,7 @@ def print_internal_help(command_name):
     DEBUG("Printing help for internal command %s based on docstring: %s", command_name, docs)
     fin = cStringIO.StringIO(docs)
     usage, helptext = get_usage_and_help(fin)
-    print_usage_help(usage, helptext, command_name)
+    print_usage_help(usage, helptext, command_name, [command_name])
 
 
 @traced
@@ -410,7 +414,7 @@ def sub_help(args = None):
     """
     Run the help subcommand
 
-    # Usage: help <command>
+    # Usage: %COMMAND% <command>
     # Help: Shows help for sub commands
     """
     if args is None:
@@ -435,7 +439,7 @@ def sub_help(args = None):
     # the doc file if present and exit with error.
     # -------------------------------------------------------------------------
     if args and os.path.isdir(args[0]) and os.path.abspath(args[0]) == args[0]:
-        print_container_help(args[0])
+        print_container_help(args[0], args[1:])
         return False
 
     # -------------------------------------------------------------------------
@@ -443,12 +447,12 @@ def sub_help(args = None):
     # used to call this script, the path will resolve to the one of libexec,
     # which will then print help for the top level commands.
     # -------------------------------------------------------------------------
-    command_path = find_command_path(args)[0]
+    command_path, command = find_command_path(args)[:2]
     if command_path is not None:
         if os.path.isdir(command_path):
             print_container_help(command_path, args)
         else:
-            print_file_help(command_path)
+            print_file_help(command_path, command)
         return True
     else:
         die("%s: no such command `%s'" % (SUBNAME, " ".join(args)))
@@ -551,7 +555,7 @@ def sub_completions(args = None):
     """
     Run the completions subcommand
 
-    # Usage: completions <command> [args]
+    # Usage: %COMMAND% <command> [args]
     # Help: Internal command to generate completions for shells
 
     """
@@ -586,7 +590,7 @@ def sub_init(args = None):
     """
     Run the init subcommand
 
-    # Usage: init [-] <shell>
+    # Usage: %COMMAND% [-] <shell>
     # Help: When run bare, provides instructions on how to initialise this sub in your shell.
     #
     # When run with a hyphen, it will output the code to be evalled by the shell in order to get the sub working.
