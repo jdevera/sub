@@ -675,8 +675,8 @@ def main(argv=[__name__]):
     sh_check_mode = False
     try:
         # Add this sub's main directory to the environment
-        LIBEXEC_PATH = os.path.dirname(os.path.realpath(__file__))
-        SUB_ROOT = os.path.dirname(LIBEXEC_PATH)
+        SUB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        LIBEXEC_PATH = os.path.join(SUB_ROOT, 'libexec')
 
         DEBUG("LIBEXEC_PATH = %s, SUB_ROOT = %s", LIBEXEC_PATH, SUB_ROOT)
 
