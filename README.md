@@ -11,13 +11,14 @@ Here's some quick examples:
     $ rbenv                    # prints out usage and subcommands
     $ rbenv versions           # runs the "versions" subcommand
     $ rbenv shell 1.9.3-p194   # runs the "shell" subcommand, passing "1.9.3-p194" as an argument
+    $ foo bar baz -t           # runs the "baz" subcommand in the "bar" subcommand with "-t" as argument
 
 Each subcommand maps to a separate, standalone executable program. Sub programs are laid out like so:
 
     .
     ├── bin               # contains the main executable for your program
     ├── completions       # (optional) bash/zsh completions
-    ├── libexec           # where the subcommand executables are
+    ├── libexec           # where the subcommand executables and containers are
     └── share             # static data storage
 
 ## Subcommands
@@ -73,16 +74,18 @@ You can also have deeper nested levels of sub commands, just create directories 
 
 ## What's on your sub
 
-You get a few commands that come with your sub:
+There are some commands that are implemented directly in the sub program:
 
 * `commands`: Prints out every subcommand available
 * `completions`: Helps kick off subcommand autocompletion.
 * `help`: Document how to use each subcommand
 * `init`: Shows how to load your sub with autocompletions, based on your shell.
-* `shell`: Helps with calling subcommands that might be named the same as builtin/executables.
+
+Also, your sub comes with:
+
 * `example`: An example of multi level sub commands, it's safe to remove.
 
-If you ever need to reference files inside of your sub's installation, say to access a file in the `share` directory, your sub exposes the directory path in the environment, based on your sub name. For a sub named `rush`, the variable name will be `_RUSH_ROOT`.
+If you ever need to reference files inside of your sub's installation, say to access a file in the `share` directory, your sub exposes the root directory path in the environment, based on your sub name. For a sub named `rush`, the variable name will be `_RUSH_ROOT`.
 
 Here's an example subcommand you could drop into your `libexec` directory to show this in action: (make sure to correct the name!)
 
@@ -103,7 +106,7 @@ This is all done by adding a few magic comments. Here's an example from `rush wh
 
 ``` bash
 #!/usr/bin/env bash
-# Usage: sub who
+# Usage: %COMMAND%
 # Summary: Check who's logged in
 # Help: This will print out when you run `sub help who`.
 # You can have multiple lines even!
@@ -125,7 +128,7 @@ Now, when you run `sub`, the "Summary" magic comment will now show up:
 
     Some useful sub commands are:
        commands               List all sub commands
-       + example              Collection of BASH Sub Example Scripts
+       ↬  example             Collection of BASH Sub Example Scripts
        who                    Check who's logged in
 
 And running `sub help who` will show the "Usage" magic comment, and then the "Help" comment block:
@@ -138,6 +141,8 @@ And running `sub help who` will show the "Usage" magic comment, and then the "He
        Show off an example indented
 
     And maybe start off another one?
+
+Note how the placeholder `%COMMAND%` in the Usage line has been replaced by the actual command. This is provided as a way to keep help meaningful even when subcommands are symlinked or moved around the sub.
 
 A container of sub commands can also provide documentation, using the same magic comments described above, in a file called `doc.txt` directly under the container directory. Only `Summary` and `Help` entries are used, as the usage string is predefined for containers. For instance, these are the contents of the `libexec/sub-example/doc.txt`:
 
@@ -152,12 +157,12 @@ The _Summary_ line is shown in the sub summaries shown above and the _Help_ text
     These commands are mostly used as examples and for testing sub modifications
 
     Some useful sub example commands are:
-       + advanced  List all Advanced sub Example Scripts
-       + basic     List all basic sub Example Scripts
+       ↬  advanced  List all Advanced sub Example Scripts
+       ↬  basic     List all basic sub Example Scripts
 
     See 'sub help example <command>' for information on a specific command.
 
-Container names appear preceded by a plus sign (`+`) in the summaries view.
+Container names appear preceded by an arrow (`↬ `) in the summaries view.
 
 There is a `doc.txt` file directly under the `libexec` directory. From this one only the _Help_ text is used, it can be a useful place to describe your sub.
 
