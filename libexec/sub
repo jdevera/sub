@@ -320,6 +320,8 @@ def get_container_summaries(container):
             command_path = os.path.join(command_path, DOC_FILE)
             command = u"%s %s" % (DIR_PREFIX, command)
             DEBUG("command %s is a directory, adding docfile: %s", command, command_path)
+        else:
+            command = (u" " * (len(DIR_PREFIX) + 1)) + command
         if os.path.exists(command_path):
             DEBUG("Found docfile: %s, will get summary", command_path)
             summary = get_summary(command_path)
