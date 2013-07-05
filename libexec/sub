@@ -409,6 +409,9 @@ def get_usage_and_help(afile):
 
     if helptext is not None:
         helptext = "\n".join(helptext)
+        if re.match(r'^\s*$', helptext) is not None:
+            helptext = None
+
 
     return usage, helptext
 
