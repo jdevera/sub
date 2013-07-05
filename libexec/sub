@@ -423,13 +423,17 @@ def print_usage_help(usage, helptext, file_path, command = None):
     Print out a formatted help message
     """
     if usage is not None:
+        command.insert(0, SUBNAME)
         DEBUG("Usage comment found for %s: %s", file_path, usage)
         if command and "%COMMAND%" in usage:
             DEBUG("Injecting command name into usage string")
-            command.insert(0, SUBNAME)
             usage = usage.replace("%COMMAND%", " ".join(command))
         print usage
         if helptext is not None:
+            if command and "%COMMAND%" in helptext:
+                DEBUG("Injecting command name into helptext string")
+                helptext = helptext.replace("%COMMAND%", " ".join(command))
+
             DEBUG("Help comment found for %s: %s", file_path, helptext)
             print
             print "".join(helptext)
