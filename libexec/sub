@@ -744,8 +744,10 @@ def main(argv=[__name__]):
 
         DEBUG("LIBEXEC_PATH = %s, SUB_ROOT = %s", LIBEXEC_PATH, SUB_ROOT)
 
-        sub_root_env_name = "_%s_ROOT" % SUBNAME.upper()
-        sub_leading_command_name = "_%s_COMMAND" % SUBNAME.upper()
+        sub_root_env_name        = "_%s_ROOT"         % SUBNAME.upper()
+        sub_leading_command_name = "_%s_COMMAND"      % SUBNAME.upper()
+        sub_command_path_name    = "_%s_COMMAND_PATH" % SUBNAME.upper()
+        sub_is_eval_name         = "_%s_IS_EVAL"      % SUBNAME.upper()
         os.environ[sub_root_env_name] = SUB_ROOT
 
         # And also add the libexec directory to the PATH
@@ -795,7 +797,10 @@ def main(argv=[__name__]):
             die("%s: no such command `%s'" % (SUBNAME, ' '.join(command)))
 
         # Or everything went well, so run the command
+        if is_sh or command[-1].startswith("sh-"):
+            os.environ[sub_is_eval_name] = '1'
         os.environ[sub_leading_command_name] = ' '.join(command)
+        os.environ[sub_command_path_name] = command_path
         DEBUG("subcommand %s was found. Executing with args: %s" % (command, flags))
         os.execvp(command_path, [command_path] + flags)
 
