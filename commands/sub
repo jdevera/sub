@@ -18,7 +18,7 @@ from textwrap import dedent as dd
 # Globals {{{
 SUBNAME = os.path.basename(__file__)
 SUB_ROOT = None
-LIBEXEC_PATH = None
+COMMANDS_PATH= None
 internal_commands = {}
 DOC_FILE = 'doc.txt'
 DIR_PREFIX = u'↬ '
@@ -163,7 +163,7 @@ def mkcmd(command, sh_flag = False):
     """
     Return a string with the name of a command in this sub.
     """
-    return u"%s%s-%s" % (SUBNAME, ('-sh' if sh_flag else ''), command)
+    return u"sh-%s" % command if sh_flag else unicode(command)
 
 
 @traced
@@ -192,7 +192,7 @@ def find_command_path(argv, start_dir = None):
         * The arguments to be passed to the command. this will be None if the
           command cannot be found.
     """
-    running_path = LIBEXEC_PATH if start_dir is None else start_dir
+    running_path = COMMANDS_PATH if start_dir is None else start_dir
     shift = 0
     command = []
     is_sh = False
@@ -504,7 +504,7 @@ def sub_help(args = None):
 
     # -------------------------------------------------------------------------
     # resolve the path of the command based on its tokens. It no arguments were
-    # used to call this script, the path will resolve to the one of libexec,
+    # used to call this script, the path will resolve to the one of the commands,
     # which will then print help for the top level commands.
     # -------------------------------------------------------------------------
     command_path, command = find_command_path(args)[:2]
@@ -536,7 +536,7 @@ def get_container_commands(container_path, sh_flag = None, only_containers = Fal
     """
     glob_pattern = os.path.join(container_path, mkcmd('*'))
     commands = []
-    if not sh_flag and container_path == LIBEXEC_PATH and not only_containers:
+    if not sh_flag and container_path == COMMANDS_PATH and not only_containers:
         commands = internal_commands.keys()
     for command in glob.iglob(glob_pattern):
         if only_containers and not os.path.isdir(command):
@@ -582,7 +582,7 @@ def sub_commands(args):
             args.pop(0)
     command = args
     # Find the path to the container
-    container_path = os.path.join(LIBEXEC_PATH, *[ mkcmd(c) for c in command])
+    container_path = os.path.join(COMMANDS_PATH, *[ mkcmd(c) for c in command])
 
     if os.path.isdir(container_path):
         DEBUG("Container path %s exists", container_path)
@@ -735,14 +735,14 @@ def main(argv=[__name__]):
     """ Run this program """
     args = argv[1:]
     global SUB_ROOT
-    global LIBEXEC_PATH
+    global COMMANDS_PATH
     sh_check_mode = False
     try:
         # Add this sub's main directory to the environment
         SUB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        LIBEXEC_PATH = os.path.join(SUB_ROOT, 'libexec')
+        COMMANDS_PATH = os.path.join(SUB_ROOT, 'commands')
 
-        DEBUG("LIBEXEC_PATH = %s, SUB_ROOT = %s", LIBEXEC_PATH, SUB_ROOT)
+        DEBUG("COMMANDS_PATH = %s, SUB_ROOT = %s", COMMANDS_PATH, SUB_ROOT)
 
         sub_root_env_name        = "_%s_ROOT"         % SUBNAME.upper()
         sub_leading_command_name = "_%s_COMMAND"      % SUBNAME.upper()
@@ -750,8 +750,8 @@ def main(argv=[__name__]):
         sub_is_eval_name         = "_%s_IS_EVAL"      % SUBNAME.upper()
         os.environ[sub_root_env_name] = SUB_ROOT
 
-        # And also add the libexec directory to the PATH
-        path_prepend(LIBEXEC_PATH)
+        # And also add the commands directory to the PATH
+        path_prepend(COMMANDS_PATH) # TODO: Do we want this?
 
         # If user is just asking for help, give them help
         if len(args) < 1 or args[0] in ('-h', '--help'):
