@@ -650,7 +650,7 @@ def sub_init(args = None):
     """
     Run the init subcommand
 
-    # Usage: %COMMAND% [-] <shell>
+    # Usage: %COMMAND% [-] [<shell>]
     # Help: When run bare, provides instructions on how to initialise this sub in your shell.
     #
     # When run with a hyphen, it will output the code to be evalled by the shell in order to get the sub working.
