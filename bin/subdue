@@ -13,6 +13,7 @@ import subprocess
 import cStringIO
 import re
 from textwrap import dedent as dd
+import string
 
 # }}}
 # Globals {{{
@@ -272,6 +273,15 @@ class Matcher(object):
         return self.m.group(n)
     def clear(self):
         self.m = None
+
+@traced
+def fill_template(path, mapping, **kwargs):
+    if os.path.isfile(path):
+        with open(path) as tfile:
+            tpl = string.Template(tfile.read())
+            expanded = tpl.safe_substitute(mapping, **kwargs)
+            return expanded
+    return None
 
 # }}}
 # Internal command: HELP {{{
@@ -644,88 +654,153 @@ def sub_completions(args = None):
 
 # }}}
 # Internal command: INIT {{{
+
+@traced
+def guess_shell():
+
+    shell = os.environ.get('SHELL', None)
+    DEBUG("SHELL=%s", shell)
+    if shell is not None and os.path.exists(shell):
+        shell = os.path.basename(shell)
+        DEBUG("Based on the $SHELL environment variable, the user shell is %s", shell)
+    else:
+        DEBUG("The $SHELL environment variable was not set or was invalid, could not guess shell")
+        shell = None
+    return shell
+
+@traced
+def print_init_template(shell, is_full, mapping):
+    tpl_file = ("init_full_%s.tpl" if is_full else "init_%s.tpl") % shell
+    tpl_path = os.path.join(SUB_ROOT, 'core', 'init', tpl_file)
+    DEBUG("Init template path: %s", tpl_path)
+    msg = fill_template(tpl_path, mapping)
+    DEBUG("Init template contents: %s", msg)
+    if msg is None:
+        mapping['missing_file'] = tpl_path
+        die(dd("""\
+            ##############################################################################
+            INTERNAL CONSISTENCY ERROR:
+
+            Your shell '%(shell)s' is one of the shells supported by Subdue, however, a
+            required file to support this shell was not found in the expected location.
+
+            Missing file: %(missing_file)s
+            ##############################################################################
+            """ % mapping))
+    sys.stdout.write(msg)
+    sys.exit(0)
+
 @traced
 @internal_command
 def sub_init(args = None):
     """
     Run the init subcommand
 
-    # Usage: %COMMAND% [-] [<shell>]
-    # Help: When run bare, provides instructions on how to initialise this sub in your shell.
+    # Usage: %COMMAND% [ [--full] <shell> ]
+    # Help:
+    # Provide instructions and code to initialise this sub in your shell.
     #
-    # When run with a hyphen, it will output the code to be evalled by the shell in order to get the sub working.
+    # INFO MODE AND SUPPORTED SHELLS:
     #
-    # It will try to to guess the current shell, but one can be specified by name in the command line.
+    # Init will try to to guess the current shell, but one can be specified by name
+    # in the command line. The currently supported shells are:
+    #
+    #    - bash
+    #    - zsh
+    #    - fish
+    #
+    # FULL MODE:
+    #
+    # When run with the --full option, it will output the code to be evalled by the
+    # given shell in order to get the sub working. When invoked with --full, a
+    # shell must be specified. The --full option is intended to be used mainly from
+    # a shell initialisation file.
+    #
+    # USING WITH UNSUPPORTED SHELLS:
+    #
+    # Subdue subs can still be run without explicit shell support, provided the
+    # user adds the bin directory to their PATH environment variable somehow.
+    # This also means no support for neither completion nor eval type commands.
+    #
     """
-    do_print = args and args[0] == '-'
-    if do_print:
-        args.pop(0)
-        DEBUG("Called by shell")
-    else:
-        DEBUG("Called by user")
 
-    # Figure out the shell
-    if args:
-        shell = args.pop(0)
-    else:
-        shell = os.path.basename(os.environ.get('SHELL', ''))
-
-    # Profile files for supported shells
-    profiles = dict(
-        bash = '~/.bash_profile',
-        zsh  = '~/.zshenv'
-        )
+    supported_shells = [
+            'bash',
+            'zsh',
+            'fish',
+            ]
 
     # Common arguments for all subsequent strings
     fmt_args = dict(
-            sub      = SUBNAME,
-            profile  = profiles.get(shell, 'your profile'),
-            sub_root = SUB_ROOT,
-            shell    = shell
+            sub         = SUBNAME,
+            sub_root    = SUB_ROOT,
+            sub_bin_dir = os.path.join(SUB_ROOT,'bin'),
+            sub_bin     = os.path.join(SUB_ROOT,'bin', SUBNAME)
             )
-
     DEBUG("Common arguments for strings: %s" % fmt_args)
 
-    if not do_print:
-        msg = dd("""\
-            # Load %(sub)s automatically by adding
-            # the following to %(profile)s:
+    full_mode = args and args[0] == '--full'
 
-            eval "$(%(sub_root)s/bin/%(sub)s init -)"
+    if full_mode:
+        args.pop(0)
+        DEBUG("Called by shell (--full)")
+    else:
+        DEBUG("Called by user")
 
-            """ % fmt_args )
-        if shell not in profiles:
-            msg += dd("""\
-                # Warning: %(sub)s has no support for either 'sh' commands or
-                # completions in your shell '%(shell)s'
-
-                """ % fmt_args )
-        # Print message to stderr and exit
-        die(msg)
-
-    # alternatively, if init is being called to get its out output evalled:
-
-    # Add to PATH
-    print 'export PATH="%s:%s/bin"' % (os.environ['PATH'], SUB_ROOT)
-
-    if shell in profiles:
+    # run_help_msg = "\nRun '%s help init' for more information." % SUBNAME
+    guessed = False
+    if args:
+        shell = args.pop(0).lower()
+        DEBUG("Shell: %s has been provided by user", shell)
+    elif full_mode:
+        DEBUG("Full mode without shell specified. Die with error to eval")
         print dd("""\
-        source "%(sub_root)s/completions/%(sub)s.%(shell)s"
-        _sub_%(sub)s_wrapper() {
-            if [[ -z $1 ]]; then
-                command %(sub)s
-            elif command %(sub)s --is-sh "$@"; then
-                eval "$(command %(sub)s "$@")"
-            else
-                command %(sub)s "$@"
-            fi
-            return $?
-        }
-        """ % fmt_args)
-        if shell == 'bash':
-            print "alias %(sub)s=_sub_%(sub)s_wrapper" % fmt_args
-        elif shell == 'zsh':
-            print "%(sub)s=_sub_%(sub)s_wrapper" % fmt_args
+            cat <<ERROR >&2
+            ##############################################################
+            Error initialising a Subdue Sub called %(sub)s.
+            A shell name must be provided when ran in --full mode.
+            Run init again or "%(sub)s help init" for details.
+            WARNING: %(sub)s IS NOT activated on this shell.
+            ##############################################################
+            ERROR
+            """ % fmt_args)
+        sys.exit(1)
+    else:
+        DEBUG("Must guess shell")
+        shell = guess_shell()
+        if shell is None:
+            die(dd("""\
+                ERROR: %(sub)s could not guess your shell.
+                Please provide it as a parameter in the command line:
+
+                    %(sub_bin)s init <shell-name>
+
+                For additional information run:
+
+                    %(sub_bin)s help init\
+                """ % fmt_args))
+
+        guessed = True
+    fmt_args['shell'] = shell
+    fmt_args['supported_shells'] = ", ".join(supported_shells)
+    if shell not in supported_shells:
+        fmt_args['who'] = (SUBNAME + " has 'guessed'") if guessed else "You have indicated"
+        die(dd("""\
+            ERROR: %(who)s that your shell is '%(shell)s', but '%(shell)s' is
+            not supported currently.
+
+            Supported shells: %(supported_shells)s
+
+            For more information on how to work with unsupported shells or how to specify a
+            shell manually if this guess is incorrect, run:
+
+                %(sub_bin)s help init
+        """ % fmt_args))
+
+
+    DEBUG("The shell is supported: %s", shell)
+    print_init_template(shell, full_mode, fmt_args)
+    sys.exit(0)
 
 
 # }}}
