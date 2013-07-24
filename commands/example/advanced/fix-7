@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: sub example advanced fix-7
+# Usage: %COMMAND%
 # Summary: Fixes Issue #7
 # Help: Fixes Issue #7: https://github.com/37signals/sub/issues/7
 
 set -e
 
-# Provide sub completions
+# Provide subdue completions
 if [ "$1" = "--complete" ]; then  
 	while [ ! "$1" == "" ]; do
 	  if [ "$1" = "foo" ] || [ "$1" = "bar" ]; then

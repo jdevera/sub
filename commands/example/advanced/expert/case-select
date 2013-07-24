@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: sub example advanced expert case-select
+# Usage: %COMMAND%
 # Summary: BASH Case Select Example
 # Help: This is an example of a BASH Case Select
 
 set -e
 
-# Provide sub completions
+# Provide subdue completions
 if [ "$1" = "--complete" ]; then
   echo --name
   echo --break

@@ -1,2 +1,2 @@
-# Summary: List all basic sub Example Scripts
-# Help: This command lists all of the basic sub Example Scripts
+# Summary: List all basic subdue Example Scripts
+# Help: This command lists all of the basic subdue Example Scripts

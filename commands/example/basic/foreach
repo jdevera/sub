@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Usage: sub example basic foreach [--break]
+# Usage: %COMMAND% [--break]
 # Summary: BASH For Each Example w/ break loop option
 # Help: This command is an example of a BASH For Each Loop with an example of how to break the loop based on an argument parameter
 
 set -e
 
-# Provide sub completions
+# Provide subdue completions
 if [ "$1" = "--complete" ]; then
   echo --break
   exit

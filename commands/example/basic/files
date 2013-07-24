@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Usage: sub example basic filecomplete
+# Usage: %COMMAND%
 # Summary: Example of auto completion for files
 # Help: This is an example of auto completion for files
