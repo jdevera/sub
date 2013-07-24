@@ -10,7 +10,7 @@ prepare_sub() {
             prepare_sub "$file"
         done
     elif [[ -f $path ]]; then
-        sed -i "s/\b\(_\)\?subdue\b/\1$SUBNAME/g;s/\b_SUBDUE_\(\[A-Z\]\)\b/_${ENVNAME}_\1/g" "$path"
+        sed -i "s/\b\(_\)\?subdue\b/\1$SUBNAME/g;s/\b_SUBDUE_\([A-Z_]\+\)\b/_${ENVNAME}_\1/g" "$path"
         if [[ $(basename $path) != 'doc.txt' ]]; then
             chmod +x "$path"
         fi
