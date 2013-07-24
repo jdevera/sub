@@ -818,9 +818,12 @@ def main(argv=[__name__]):
     global COMMANDS_PATH
     sh_check_mode = False
     try:
-        # Add this sub's main directory to the environment
         SUB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         COMMANDS_PATH = os.path.join(SUB_ROOT, 'commands')
+        bin_path = os.path.join(SUB_ROOT, 'bin')
+        lib_path = os.path.join(SUB_ROOT, 'lib')
+        path_prepend(lib_path)
+        path_prepend(bin_path)
 
         DEBUG("COMMANDS_PATH = %s, SUB_ROOT = %s", COMMANDS_PATH, SUB_ROOT)
 
@@ -829,9 +832,6 @@ def main(argv=[__name__]):
         sub_command_path_name    = "_%s_COMMAND_PATH" % SUBNAME.upper()
         sub_is_eval_name         = "_%s_IS_EVAL"      % SUBNAME.upper()
         os.environ[sub_root_env_name] = SUB_ROOT
-
-        # And also add the commands directory to the PATH
-        path_prepend(COMMANDS_PATH) # TODO: Do we want this?
 
         # If user is just asking for help, give them help
         if len(args) < 1 or args[0] in ('-h', '--help'):
