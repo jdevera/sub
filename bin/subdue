@@ -738,6 +738,7 @@ def sub_init(args = None):
     # Common arguments for all subsequent strings
     fmt_args = dict(
             sub         = SUBNAME,
+            SUB         = SUBNAME.upper(),
             sub_root    = SUB_ROOT,
             sub_bin_dir = os.path.join(SUB_ROOT,'bin'),
             sub_bin     = os.path.join(SUB_ROOT,'bin', SUBNAME)

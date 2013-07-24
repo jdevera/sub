@@ -13,13 +13,13 @@ function _subdue_${sub}_wrapper()
 {
     local ret=0
     if [[ -z $$1 ]]; then
-        command ${sub}
+        env ${SUB}_SHELL=zsh ${sub}
         ret=$$?
     elif command ${sub} --is-sh "$$@"; then
-        eval "$$(command ${sub} "$$@")"
+        eval "$$(env ${SUB}_SHELL=zsh ${sub} "$$@")"
         ret=$$?
     else
-        command ${sub} "$$@"
+        env ${SUB}_SHELL=zsh ${sub} "$$@"
         ret=$$?
     fi
     return $$ret
@@ -39,9 +39,9 @@ if [[ -o interactive ]]; then
         word="$${words[2]}"
 
         if [ "$${#words}" -eq 2 ]; then
-            completions="$$(${sub} commands)"
+            completions="$$(env ${SUB}_SHELL=zsh ${sub} commands)"
         else
-            completions="$$(${sub} completions "$${word}")"
+            completions="$$(env ${SUB}_SHELL=zsh ${sub} completions "$${word}")"
         fi
 
         reply=("$${(ps:\n:)completions}")

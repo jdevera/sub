@@ -13,18 +13,18 @@ end
 function _subdue_${sub}_wrapper
 
     if test -z "$$argv"
-        command ${sub}
+        env ${SUB}_SHELL=fish ${sub}
         return $$status
-    else if command ${sub} --is-sh $$argv
+    else if env ${SUB}_SHELL=fish ${sub} --is-sh $$argv
         # TODO: Find out how to get linebreaks from command substitution
         set tmpinit (tempfile)
-        command ${sub} $$argv > $$tmpinit
+        env ${SUB}_SHELL=fish ${sub} $$argv > $$tmpinit
         . $$tmpinit
         set -l s $$status
         rm $$tmpinit
         return $$s
     else
-        command ${sub} $$argv
+        env ${SUB}_SHELL=fish ${sub} $$argv
         return $$status
     end
     return 1

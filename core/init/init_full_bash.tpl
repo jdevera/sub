@@ -12,13 +12,13 @@ function _subdue_${sub}_wrapper()
 {
     local ret=0
     if [[ -z $$1 ]]; then
-        command ${sub}
+        env ${SUB}_SHELL=bash ${sub}
         ret=$$?
     elif command ${sub} --is-sh "$$@"; then
-        eval "$$(command ${sub} "$$@")"
+        eval "$$(env ${SUB}_SHELL=bash ${sub} "$$@")"
         ret=$$?
     else
-        command ${sub} "$$@"
+        env ${SUB}_SHELL=bash ${sub} "$$@"
         ret=$$?
     fi
     return $$ret
@@ -33,9 +33,9 @@ function _${sub}()
     local word="$${COMP_WORDS[COMP_CWORD]}"
 
     if [[ "$$COMP_CWORD" -eq 1 ]]; then
-        COMPREPLY=( $$(compgen -W "$$(command ${sub} commands)" -- "$$word") )
+        COMPREPLY=( $$(compgen -W "$$(env ${SUB}_SHELL=bash ${sub} commands)" -- "$$word") )
     else
-        local completions="$$(command ${sub} completions "$${COMP_WORDS[@]:1}")"
+        local completions="$$(env ${SUB}_SHELL=bash ${sub} completions "$${COMP_WORDS[@]:1}")"
         COMPREPLY=( $$(compgen -W "$$completions" -- "$$word") )
   fi
 }
