@@ -1,35 +1,20 @@
 #!/usr/bin/env bash
 
 
-chmod_files()
-{
-    for file in "$1"/*; do
-        [[ ! -d $file ]] && chmod +x "$file"
-    done
-}
-
-make_new_path()
-{
-    local path="$1"
-    local dir="$(dirname "$path")"
-    local base="$(basename "$path" | sed "s/^sub/${SUBNAME}/g")"
-    echo "$dir/$base"
-}
 
 prepare_sub() {
     local path="$1"
-    local newpath="$(make_new_path "$path")"
 
     if [[ -d $path ]]; then
-        for file in "$path"/sub-*; do
+        for file in "$path"/*; do
             prepare_sub "$file"
         done
-        chmod_files "$path"
     elif [[ -f $path ]]; then
-        sed -i "s/\b\(_\)\?sub\b/\1$SUBNAME/g;s/\b_SUB_ROOT\b/_$ENVNAME/g" "$path"
+        sed -i "s/\b\(_\)\?subdue\b/\1$SUBNAME/g;s/\b_SUBDUE_\(\[A-Z\]\)\b/_${ENVNAME}_\1/g" "$path"
+        if [[ $(basename $path) != 'doc.txt' ]]; then
+            chmod +x "$path"
+        fi
     fi
-
-    mv "$path" "$newpath"
 }
 
 
@@ -40,24 +25,18 @@ if [[ -z $NAME ]]; then
 fi
 
 SUBNAME=$(echo $NAME | tr '[A-Z]' '[a-z]')
-ENVNAME="$(echo $NAME | tr '[a-z-]' '[A-Z_]')_ROOT"
+ENVNAME="$(echo $NAME | tr '[a-z-]' '[A-Z_]')"
 
 echo "Preparing your '$SUBNAME' sub!"
 
-if [[ $NAME != "sub" ]]; then
-    rm bin/sub
+if [[ $SUBNAME != "subdue" ]]; then
+    mv bin/sub bin/$SUBNAME
 
-    for file in **/sub*; do
-      prepare_sub "$file"
-    done
+    prepare_sub "commands"
 
-    chmod_files "libexec"
-
-    ln -s ../libexec/$SUBNAME bin/$SUBNAME
 fi
 
-rm README.md
-rm prepare.sh
+rm README.md prepare.sh VERSION
 
 cat << DONEMSG
 Done! Enjoy your new sub! If you're happy with your sub, run:
@@ -70,7 +49,7 @@ Done! Enjoy your new sub! If you're happy with your sub, run:
 
 You can remove the example when you no longer need it:
 
-   rm -r libexec/${SUBNAME}-example
+   rm -r commands/example
 
 Made a mistake? Want to make a different sub? Run:
 
