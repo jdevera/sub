@@ -206,7 +206,7 @@ def find_command_path(argv, start_dir = None):
         if token[0] == '-':
             break
         command.append(token)
-        possible_path = os.path.join(running_path, mkcmd(token))
+        possible_path = os.path.join(running_path, token)
 
         # If the current token is part of the path but no the script, just add
         # to running path and keep looking.
@@ -544,12 +544,17 @@ def get_container_commands(container_path, sh_flag = None, only_containers = Fal
     """
     Print the commands available in a given path
     """
-    glob_pattern = os.path.join(container_path, mkcmd('*'))
+    glob_pattern = os.path.join(container_path, '*')
     commands = []
     if not sh_flag and container_path == COMMANDS_PATH and not only_containers:
         commands = internal_commands.keys()
     for command in glob.iglob(glob_pattern):
-        if only_containers and not os.path.isdir(command):
+        # Skip doc.txt
+        if os.path.basename(command) == 'doc.txt':
+            continue
+        # Skip files if we are getting only containers or if file cannot be
+        # executed
+        if not os.path.isdir(command) and ( only_containers or not os.access(command, os.X_OK)):
             continue
         DEBUG("command '%s' matched glob pattern '%s'", command, glob_pattern)
         # Leave only the command name without prefix
@@ -592,7 +597,7 @@ def sub_commands(args):
             args.pop(0)
     command = args
     # Find the path to the container
-    container_path = os.path.join(COMMANDS_PATH, *[ mkcmd(c) for c in command])
+    container_path = os.path.join(COMMANDS_PATH, *command)
 
     if os.path.isdir(container_path):
         DEBUG("Container path %s exists", container_path)
