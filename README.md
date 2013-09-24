@@ -1,4 +1,4 @@
-[![Stories in Ready](http://badge.waffle.io/jdevera/subdue.png)](http://waffle.io/jdevera/subdue)  
+[![Stories in Ready](https://badge.waffle.io/jdevera/subdue.png)](https://waffle.io/jdevera/subdue)
 # sub: a delicious way to organize programs
 
 Sub is a model for setting up shell programs that use subcommands, like `git` or `rbenv` using bash. Making a sub does not require you to write shell scripts in bash, you can write subcommands in any scripting language you prefer.
